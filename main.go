@@ -1,0 +1,439 @@
+// nextendo-dashboard is the UNIFIED live-monitoring site for the private Nextendo
+// NEX secure servers (Mario Kart 8 Deluxe, Splatoon 2, Super Smash Bros Ultimate,
+// Animal Crossing: New Horizons). Each game server already exposes a per-game
+// /api/stats JSON on its own dashboard port; this aggregator polls them server-side, tags each by game,
+// rolls them up into one payload (+ a short history for the realtime charts) and
+// serves a single rich UI with game tabs and a global overview.
+//
+// Standard library only (net/http, encoding/json) — no NEX/Postgres here; the heavy
+// per-game data extraction stays in each game server's dashboard.
+package main
+
+import (
+	"context"
+	_ "embed"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"os"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+)
+
+//go:embed worldmap.jpg
+var worldMapJPG []byte
+
+// ---- game sources ----------------------------------------------------------
+
+type gameSrc struct {
+	Key   string // "mk8" | "s2" | "ssbu" | "acnh"
+	Label string
+	Color string // accent hex used by the UI
+	URL   string // base URL of that game's dashboard (…/api/stats appended)
+	Token string // DASH_TOKEN of that game (?key=)
+}
+
+func envOr(k, def string) string {
+	if v := os.Getenv(k); v != "" {
+		return v
+	}
+	return def
+}
+
+func sources() []gameSrc {
+	tok := os.Getenv("DASH_TOKEN")
+	return []gameSrc{
+		{Key: "mk8", Label: "Mario Kart 8 DX", Color: "#ff3b4e",
+			URL: envOr("DASH_MK8_URL", "http://mk8nex:8082"), Token: envOr("DASH_MK8_TOKEN", tok)},
+		{Key: "s2", Label: "Splatoon 2", Color: "#2ee06a",
+			URL: envOr("DASH_S2_URL", "http://s2nex:8083"), Token: envOr("DASH_S2_TOKEN", tok)},
+		{Key: "ssbu", Label: "Smash Bros Ultimate", Color: "#ff913b",
+			URL: envOr("DASH_SSBU_URL", "http://ssbusecure:8084"), Token: envOr("DASH_SSBU_TOKEN", tok)},
+		{Key: "acnh", Label: "Animal Crossing: NH", Color: "#4aa8e8",
+			URL: envOr("DASH_ACNH_URL", "http://acnhnex:8086"), Token: envOr("DASH_ACNH_TOKEN", tok)},
+	}
+}
+
+// ---- per-game snapshot cache ----------------------------------------------
+
+// rollup is the small subset of each game's /api/stats we sum for the global view.
+type rollup struct {
+	Connected     int   `json:"connected"`
+	InLobby       int   `json:"inLobby"`
+	ActiveLobbies int   `json:"activeLobbies"`
+	TotalRMC      int64 `json:"totalRmc"`
+	PeakConnected int   `json:"peakConnected"`
+}
+
+type snapshot struct {
+	Online   bool
+	LastPoll time.Time
+	LastErr  string
+	Raw      json.RawMessage // full /api/stats passed through to the UI
+	R        rollup
+}
+
+var (
+	mu    sync.RWMutex
+	cache = map[string]*snapshot{} // game key -> snapshot
+
+	histMu  sync.Mutex
+	history []histPoint
+	start   = time.Now()
+)
+
+type histPoint struct {
+	T    int64          `json:"t"`    // unix seconds
+	Conn map[string]int `json:"conn"` // game -> connected
+	RMC  int64          `json:"rmc"`  // total RMC across games (cumulative)
+}
+
+func poll(src gameSrc, client *http.Client) {
+	url := src.URL + "/api/stats"
+	if src.Token != "" {
+		url += "?key=" + src.Token
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	resp, err := client.Do(req)
+	snap := &snapshot{LastPoll: time.Now()}
+	if err != nil {
+		snap.Online = false
+		snap.LastErr = err.Error()
+		mergeSnapshot(src.Key, snap, true)
+		return
+	}
+	defer resp.Body.Close()
+	var raw json.RawMessage
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil || resp.StatusCode != 200 {
+		snap.Online = false
+		snap.LastErr = fmt.Sprintf("http %d", resp.StatusCode)
+		mergeSnapshot(src.Key, snap, true)
+		return
+	}
+	snap.Online = true
+	snap.Raw = raw
+	_ = json.Unmarshal(raw, &snap.R)
+	mergeSnapshot(src.Key, snap, false)
+}
+
+// mergeSnapshot stores a new snapshot; on a failed poll it keeps the last good Raw
+// (so a brief blip doesn't blank the UI) but flips Online=false.
+func mergeSnapshot(key string, snap *snapshot, failed bool) {
+	mu.Lock()
+	defer mu.Unlock()
+	if failed {
+		if old := cache[key]; old != nil {
+			snap.Raw = old.Raw
+			snap.R = old.R
+		}
+	}
+	cache[key] = snap
+}
+
+func pollLoop() {
+	client := &http.Client{Timeout: 4 * time.Second}
+	srcs := sources()
+	tick := time.NewTicker(2 * time.Second)
+	defer tick.Stop()
+	for {
+		var wg sync.WaitGroup
+		for _, s := range srcs {
+			wg.Add(1)
+			go func(src gameSrc) { defer wg.Done(); poll(src, client) }(s)
+		}
+		wg.Wait()
+		recordHistory()
+		resolveNames(client)
+		<-tick.C
+	}
+}
+
+func recordHistory() {
+	mu.RLock()
+	conn := map[string]int{}
+	var rmc int64
+	for k, s := range cache {
+		conn[k] = s.R.Connected
+		rmc += s.R.TotalRMC
+	}
+	mu.RUnlock()
+	histMu.Lock()
+	history = append(history, histPoint{T: time.Now().Unix(), Conn: conn, RMC: rmc})
+	if len(history) > 180 { // ~6 min at 2s
+		history = history[len(history)-180:]
+	}
+	histMu.Unlock()
+}
+
+// ---- PID -> pseudo resolution (via the account server) ---------------------
+// Games like S2/SSBU don't upload a name the dashboard can read, so players show as
+// "Joueur-<pid>". But the NEX PID == the Nextendo account PID, so we resolve the real
+// pseudo (+ avatar) from nextendo-account /api/names and let the UI override the label.
+
+type nameEntry struct {
+	Name string `json:"name"`
+}
+
+// cachedName is a resolved (or negatively-resolved) pseudo plus the time it was
+// fetched, so entries can EXPIRE and be re-resolved. Without expiry a PID that had
+// no account when first seen — a disposable counter PID, or any PID resolved during
+// a brief account-server restart window — was negative-cached FOREVER and never
+// picked up its real pseudo. That is exactly why a real console kept showing
+// "Joueur-6" even after its NEX PID correctly became the account PID (1800000006).
+type cachedName struct {
+	name string
+	at   int64 // unix seconds when cached
+}
+
+var (
+	nameMu    sync.RWMutex
+	nameCache = map[uint64]cachedName{}
+)
+
+// Re-resolution TTLs: negative (no-account) entries retry quickly so a PID that
+// gains an account self-heals within seconds; positive entries refresh slower to
+// pick up pseudo changes without hammering the account server.
+const (
+	negNameTTL = 45 * time.Second
+	posNameTTL = 300 * time.Second
+)
+
+func nameNeedsResolve(c cachedName, now int64) bool {
+	age := time.Duration(now-c.at) * time.Second
+	if c.name == "" {
+		return age >= negNameTTL
+	}
+	return age >= posNameTTL
+}
+
+func accountURL() string { return envOr("DASH_ACCOUNT_URL", "http://nextendo-account:8080") }
+
+type pidScrape struct {
+	Players    []struct{ PID uint64 `json:"pid"` } `json:"players"`
+	Gatherings []struct {
+		Players []struct{ PID uint64 `json:"pid"` } `json:"players"`
+	} `json:"gatherings"`
+}
+
+func resolveNames(client *http.Client) {
+	mu.RLock()
+	pids := map[uint64]bool{}
+	for _, s := range cache {
+		if s == nil || len(s.Raw) == 0 {
+			continue
+		}
+		var ps pidScrape
+		if json.Unmarshal(s.Raw, &ps) == nil {
+			for _, p := range ps.Players {
+				if p.PID != 0 {
+					pids[p.PID] = true
+				}
+			}
+			for _, g := range ps.Gatherings {
+				for _, p := range g.Players {
+					if p.PID != 0 {
+						pids[p.PID] = true
+					}
+				}
+			}
+		}
+	}
+	mu.RUnlock()
+
+	nameMu.RLock()
+	var want []uint64
+	now := time.Now().Unix()
+	for pid := range pids {
+		c, ok := nameCache[pid]
+		if !ok || nameNeedsResolve(c, now) {
+			want = append(want, pid)
+		}
+	}
+	nameMu.RUnlock()
+	if len(want) == 0 {
+		return
+	}
+
+	parts := make([]string, 0, len(want))
+	for _, p := range want {
+		parts = append(parts, strconv.FormatUint(p, 10))
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, accountURL()+"/api/names?pids="+strings.Join(parts, ","), nil)
+	resp, err := client.Do(req)
+	if err != nil {
+		return // transient: retry next cycle (no negative cache on failure)
+	}
+	defer resp.Body.Close()
+	var out struct {
+		Names map[string]nameEntry `json:"names"`
+	}
+	if json.NewDecoder(resp.Body).Decode(&out) != nil {
+		return
+	}
+	nameMu.Lock()
+	stamp := time.Now().Unix()
+	for ps, ne := range out.Names {
+		if pid, err := strconv.ParseUint(ps, 10, 64); err == nil {
+			nameCache[pid] = cachedName{name: ne.Name, at: stamp}
+		}
+	}
+	for _, p := range want { // negative-cache PIDs still without an account (retried after negNameTTL)
+		if c, ok := nameCache[p]; !ok || c.name == "" {
+			nameCache[p] = cachedName{name: "", at: stamp}
+		}
+	}
+	nameMu.Unlock()
+}
+
+func namesPayload() map[string]nameEntry {
+	nameMu.RLock()
+	defer nameMu.RUnlock()
+	out := map[string]nameEntry{}
+	for pid, c := range nameCache {
+		if c.name != "" {
+			out[strconv.FormatUint(pid, 10)] = nameEntry{Name: c.name}
+		}
+	}
+	return out
+}
+
+// ---- unified payload -------------------------------------------------------
+
+type gameOut struct {
+	Key     string          `json:"key"`
+	Label   string          `json:"label"`
+	Color   string          `json:"color"`
+	Online  bool            `json:"online"`
+	AgeSecs int             `json:"ageSeconds"`
+	Stats   json.RawMessage `json:"stats"`
+}
+
+type globalOut struct {
+	Connected     int            `json:"connected"`
+	InLobby       int            `json:"inLobby"`
+	ActiveLobbies int            `json:"activeLobbies"`
+	TotalRMC      int64          `json:"totalRmc"`
+	Peak          int            `json:"peak"`
+	GamesOnline   int            `json:"gamesOnline"`
+	PerGame       map[string]int `json:"perGame"`
+}
+
+type unified struct {
+	ServerTime    string               `json:"serverTime"`
+	UptimeSeconds int                  `json:"uptimeSeconds"`
+	Games         []gameOut            `json:"games"`
+	Global        globalOut            `json:"global"`
+	History       []histPoint          `json:"history"`
+	Names         map[string]nameEntry `json:"names"`
+}
+
+func buildUnified() unified {
+	srcs := sources()
+	mu.RLock()
+	games := make([]gameOut, 0, len(srcs))
+	g := globalOut{PerGame: map[string]int{}}
+	maxGamePeak := 0 // highest single-game peak (each game persists its own peakConnected)
+	for _, s := range srcs {
+		snap := cache[s.Key]
+		go0 := gameOut{Key: s.Key, Label: s.Label, Color: s.Color}
+		if snap != nil {
+			go0.Online = snap.Online
+			go0.Stats = snap.Raw
+			go0.AgeSecs = int(time.Since(snap.LastPoll).Seconds())
+			g.Connected += snap.R.Connected
+			g.InLobby += snap.R.InLobby
+			g.ActiveLobbies += snap.R.ActiveLobbies
+			g.TotalRMC += snap.R.TotalRMC
+			g.PerGame[s.Key] = snap.R.Connected
+			if snap.R.PeakConnected > maxGamePeak {
+				maxGamePeak = snap.R.PeakConnected
+			}
+			if snap.Online {
+				g.GamesOnline++
+			}
+		}
+		games = append(games, go0)
+	}
+	mu.RUnlock()
+	if g.Connected > peakConn {
+		peakConn = g.Connected
+	}
+	// The global peak is the peak of the *simultaneous sum*, which resets when this
+	// aggregator restarts and can miss a brief peak between 2s polls. Never report it
+	// below the highest single-game peak (each game server persists its own peakConnected
+	// for far longer), so "Pic connectés" can't undercount a single game (e.g. MK8=9).
+	if maxGamePeak > peakConn {
+		peakConn = maxGamePeak
+	}
+	g.Peak = peakConn
+	histMu.Lock()
+	h := make([]histPoint, len(history))
+	copy(h, history)
+	histMu.Unlock()
+	return unified{
+		ServerTime:    time.Now().Format("15:04:05"),
+		UptimeSeconds: int(time.Since(start).Seconds()),
+		Games:         games,
+		Global:        g,
+		History:       h,
+		Names:         namesPayload(),
+	}
+}
+
+var peakConn int
+
+// ---- HTTP ------------------------------------------------------------------
+
+func main() {
+	port := envOr("DASH_PORT", envOr("PORT", "8090")) // DASH_PORT (deploy) > PORT (local) > 8090
+	token := os.Getenv("DASH_VIEW_TOKEN")             // optional gate for the unified site itself
+
+	if os.Getenv("NEXTENDO_DASH_MOCK") == "1" {
+		go mockLoop()
+	} else {
+		go pollLoop()
+	}
+
+	authed := func(w http.ResponseWriter, r *http.Request) bool {
+		if token == "" || r.URL.Query().Get("key") == token {
+			return true
+		}
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return false
+	}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/stats", func(w http.ResponseWriter, r *http.Request) {
+		if !authed(w, r) {
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
+		_ = json.NewEncoder(w).Encode(buildUnified())
+	})
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) { fmt.Fprintln(w, "ok") })
+	mux.HandleFunc("/worldmap.jpg", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/jpeg")
+		w.Header().Set("Cache-Control", "public, max-age=86400")
+		_, _ = w.Write(worldMapJPG)
+	})
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if !authed(w, r) {
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store") // always serve fresh HTML (no stale UI)
+		_, _ = w.Write([]byte(dashboardHTML))
+	})
+
+	fmt.Printf("[nextendo-dashboard] unified monitoring on :%s (mock=%s)\n", port, envOr("NEXTENDO_DASH_MOCK", "0"))
+	if err := http.ListenAndServe(":"+port, mux); err != nil {
+		fmt.Printf("[nextendo-dashboard] HTTP error: %v\n", err)
+	}
+}
