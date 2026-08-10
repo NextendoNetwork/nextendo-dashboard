@@ -12,7 +12,7 @@ const dashboardHTML = `<!DOCTYPE html>
 <style>
   :root{ --bg:#06080f; --bg2:#0c1020; --card:#121830; --card2:#19203c; --line:#26304f; --line2:#33406b;
          --txt:#eef2ff; --muted:#8b97c4; --faint:#586089;
-         --mk8:#ff3b4e; --s2:#2ee06a; --ssbu:#ff913b; --acnh:#4aa8e8; --acc:#6aa6ff;
+         --mk8:#ff3b4e; --s2:#2ee06a; --ssbu:#ff913b; --acnh:#4aa8e8; --mc:#5d8c3f; --acc:#6aa6ff;
          --red:#ff3b4e; --blue:#3b8cff; --yellow:#ffce3a; --green:#2ee06a; --purple:#b06bff; --orange:#ff913b; --cyan:#2ad4e6; }
   *{ box-sizing:border-box; }
   ::-webkit-scrollbar{ width:10px; height:10px; } ::-webkit-scrollbar-thumb{ background:var(--line2); border-radius:6px; } ::-webkit-scrollbar-track{ background:transparent; }
@@ -41,7 +41,9 @@ const dashboardHTML = `<!DOCTYPE html>
   .tab .gd{ width:8px; height:8px; border-radius:50%; background:var(--faint); } .tab .gd.up{ box-shadow:0 0 7px currentColor; }
   .tab .cc{ font-size:11px; font-weight:800; background:var(--bg2); border:1px solid var(--line); border-radius:20px; padding:1px 8px; font-variant-numeric:tabular-nums; }
   .tab .x{ font-size:11px; color:var(--faint); font-weight:600; }
-  main{ padding:20px 24px 70px; max-width:1500px; margin:0 auto; }
+  .tab .tabico{ width:19px; height:19px; border-radius:5px; object-fit:cover; }
+  .tab .tabico.off{ filter:grayscale(1); opacity:.45; }
+  main{ padding:20px 32px 70px; max-width:1800px; margin:0 auto; }
   .cards{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:16px; }
   .stat{ position:relative; background:linear-gradient(160deg,var(--card2),var(--card)); border:1px solid var(--line); border-radius:15px; padding:14px 16px; overflow:hidden; transition:transform .15s,border-color .15s; }
   .stat:hover{ transform:translateY(-2px); border-color:var(--line2); }
@@ -64,7 +66,17 @@ const dashboardHTML = `<!DOCTYPE html>
   .gcard .gs.up{ background:rgba(46,224,106,.14); color:var(--green); } .gcard .gs.down{ background:rgba(255,59,78,.14); color:var(--red); }
   .gcard .grow{ display:flex; gap:18px; }
   .gcard .gm{ } .gcard .gm .v{ font-size:24px; font-weight:800; font-variant-numeric:tabular-nums; line-height:1; } .gcard .gm .k{ font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.6px; margin-top:4px; }
-  .glogo{ width:30px; height:30px; border-radius:9px; display:grid; place-items:center; color:#fff; background:var(--gc); font-weight:800; }
+  /* manual power controls (start/stop an allowlisted game server) */
+  .gcard .pwr{ display:flex; align-items:center; gap:8px; margin-top:12px; padding-top:11px; border-top:1px solid var(--line); cursor:default; }
+  .gcard .pwrlbl{ font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.5px; color:var(--muted); display:flex; align-items:center; gap:5px; margin-right:auto; }
+  .gcard .pwrlbl.on{ color:var(--green); } .gcard .pwrlbl.off{ color:var(--red); }
+  .pwbtn{ font-size:11px; font-weight:800; padding:5px 12px; border-radius:9px; border:1px solid var(--line2); background:var(--card2); color:var(--txt); cursor:pointer; transition:.12s; }
+  .pwbtn.on:not(:disabled):hover{ border-color:var(--green); color:var(--green); }
+  .pwbtn.off:not(:disabled):hover{ border-color:var(--red); color:var(--red); }
+  .pwbtn:disabled{ opacity:.32; cursor:default; }
+  .glogo{ width:34px; height:34px; border-radius:9px; position:relative; overflow:hidden; background:var(--gc); flex:0 0 auto; }
+  .glogo .gll{ position:absolute; inset:0; display:grid; place-items:center; color:#fff; font-weight:800; }
+  .glogo img{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
   /* chart */
   .chartwrap{ position:relative; height:200px; } .chartwrap svg{ width:100%; height:100%; display:block; }
   .legend{ display:flex; gap:16px; flex-wrap:wrap; font-size:12px; color:var(--muted); margin-top:6px; } .legend span{ display:inline-flex; align-items:center; gap:6px; } .legend i{ width:10px; height:10px; border-radius:3px; display:inline-block; }
@@ -89,11 +101,17 @@ const dashboardHTML = `<!DOCTYPE html>
   .parts{ display:flex; flex-wrap:wrap; gap:7px; }
   .pill{ display:inline-flex; align-items:center; gap:7px; background:var(--bg2); border:1px solid var(--line); border-radius:30px; padding:3px 11px 3px 3px; font-size:12px; }
   .pill .vr{ color:var(--faint); font-variant-numeric:tabular-nums; }
+  .pill .ppid{ color:var(--faint); font-size:10px; font-variant-numeric:tabular-nums; display:inline-flex; align-items:center; gap:1px; border-left:1px solid var(--line); padding-left:6px; margin-left:1px; }
+  .pill .ppid .ic{ width:9px; height:9px; opacity:.6; }
   /* avatars */
-  .av{ position:relative; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:800; color:#fff; flex:none; overflow:hidden; box-shadow:0 0 0 2px rgba(255,255,255,.07) inset; }
-  .av.s{ width:26px; height:26px; font-size:11px; } .av.m{ width:46px; height:46px; font-size:17px; } .av img{ width:100%; height:100%; object-fit:cover; }
-  .av .cr{ position:absolute; right:-3px; top:-4px; width:15px; height:15px; background:var(--yellow); color:#3a2c00; border-radius:50%; display:grid; place-items:center; box-shadow:0 0 0 2px var(--card); }
-  .av .cr .ic{ width:10px; height:10px; }
+  .av{ position:relative; display:inline-flex; align-items:center; justify-content:center; font-weight:800; color:#fff; flex:none; overflow:visible; }
+  .av.s{ width:26px; height:26px; font-size:11px; } .av.m{ width:46px; height:46px; font-size:17px; }
+  /* inner circle clips the image; the crown badge sits on the outer .av so overflow doesn't cut it */
+  .avc{ position:absolute; inset:0; border-radius:50%; overflow:hidden; display:flex; align-items:center; justify-content:center; box-shadow:0 0 0 2px rgba(255,255,255,.07) inset; }
+  .avc img{ width:100%; height:100%; object-fit:cover; }
+  .av .cr{ position:absolute; right:-3px; top:-4px; width:15px; height:15px; background:var(--yellow); color:#3a2c00; border-radius:50%; display:grid; place-items:center; box-shadow:0 0 0 2px var(--card); z-index:2; }
+  .av .cr .ic{ width:11px; height:11px; }
+  .ic.crown{ color:var(--yellow); }
   /* player cards */
   .players{ display:grid; grid-template-columns:repeat(auto-fill,minmax(330px,1fr)); gap:14px; }
   .pcard{ background:linear-gradient(160deg,var(--card2),var(--card)); border:1px solid var(--line); border-radius:15px; padding:15px; transition:.15s; }
@@ -144,17 +162,44 @@ const dashboardHTML = `<!DOCTYPE html>
 <script>
   var KEY = location.search || '';
   var TAB = 'overview';
-  var GAMECOLORS = { mk8:'#ff3b4e', s2:'#2ee06a', ssbu:'#ff913b', acnh:'#4aa8e8' };
+  var GAMECOLORS = { mk8:'#ff3b4e', s2:'#2ee06a', ssbu:'#ff913b', acnh:'#4aa8e8', mc:'#5d8c3f' };
   // correct per-game identity (the shared MK8 dashboard mislabels S2/SSBU host/port/NEX)
   var GAMEINFO = {
-    mk8:{ nex:'4.3.3', sni:'', port:60003 },
-    s2:{  nex:'4.0.0', sni:'', port:60004 },
-    ssbu:{nex:'4.6.3', sni:'', port:60005 },
-    acnh:{nex:'4.0.0', sni:'', port:60007 }
+    mk8:{ nex:'4.3.3', sni:'the-game-host', port:60003 },
+    s2:{  nex:'4.0.0', sni:'the-game-host', port:60004 },
+    ssbu:{nex:'4.6.3', sni:'the-game-host', port:60005 },
+    acnh:{nex:'4.0.0', sni:'the-game-host', port:60007 },
+    mc:{  nex:'4.3.1', sni:'the-game-host', port:60006 }
   };
-  // S2 game_mode is a constant (115) and SSBU's isn't decoded yet -> the server's MK8
-  // "Course/Bataille" label is wrong for them; show a neutral label instead.
-  function displayMode(key,raw){ return key==='mk8' ? (raw||'—') : 'Partie en ligne'; }
+  // Real game mode per lobby. S2 encodes it in the MatchmakeSession game_mode (+ maxParticipants
+  // and the private-room code): mode 1 = Ranked, mode 0 = Turf War (confirmed in-game), a
+  // 4-player cap = Salmon Run, a room code = a private battle. MK8 already sends a readable
+  // label; SSBU/ACNH stay generic.
+  function modeInfo(key,lo){
+    if(key==='mk8'){
+      if(!lo) return {name:'—', col:'#9cc1ff', bg:'rgba(106,166,255,.16)', icn:'flag'};
+      if(lo.code) return {name:'Privée', col:'#c9d2f0', bg:'rgba(139,151,196,.20)', icn:'lock'};
+      // MK8DX game_mode: 1=Course / 3=Bataille (mondial), 2=Course / 4=Bataille (régional).
+      // Mondial vs régional déduit du game_mode (à confirmer en jeu).
+      var battle=(lo.mode===3||lo.mode===4);
+      var type=(lo.mode===1||lo.mode===2)?'Course':battle?'Bataille':('Mode '+(lo.mode==null?'?':lo.mode));
+      var scope=(lo.mode===1||lo.mode===3)?'Mondial':(lo.mode===2||lo.mode===4)?'Régional':'';
+      var col=scope==='Régional'?'#c19bff':'#7fb4ff', bg=scope==='Régional'?'rgba(176,107,255,.18)':'rgba(59,140,255,.16)';
+      var icn=scope==='Régional'?'map':scope==='Mondial'?'globe':(battle?'swords':'flag');
+      return {name:(scope?scope+' · ':'')+type, col:col, bg:bg, icn:icn};
+    }
+    if(key==='s2'&&lo){
+      // S2 private battles carry no room-code; they're the only mode that seats 10 (8 players + 2 spectators).
+      if(lo.code||lo.max===10) return {name:'Privée',     col:'#c9d2f0', bg:'rgba(139,151,196,.20)', icn:'lock'};
+      if((lo.max||8)<=4)   return {name:'Salmon Run', col:'#ff9e5c', bg:'rgba(255,122,61,.20)',  icn:'fish'};
+      if(lo.mode===1)      return {name:'Ranked',     col:'#ffbf5a', bg:'rgba(255,159,59,.18)',  icn:'target'};
+      if(lo.mode===0)      return {name:'Turf War',   col:'#5fe08c', bg:'rgba(46,224,106,.18)',  icn:'flag'};
+      if(lo.mode===2)      return {name:'League',     col:'#c19bff', bg:'rgba(176,107,255,.20)', icn:'swords'};
+      return {name:'Mode '+(lo.mode==null?'?':lo.mode), col:'#9cc1ff', bg:'rgba(106,166,255,.16)', icn:'flag'};
+    }
+    return {name:'Partie en ligne', col:'#9cc1ff', bg:'rgba(106,166,255,.16)', icn:'flag'};
+  }
+  function modeBadge(key,lo){ var m=modeInfo(key,lo); return '<span class="modetag" style="background:'+m.bg+';color:'+m.col+'">'+ic(m.icn)+esc(m.name)+'</span>'; }
   var LAST = null;
   // country -> [lat, lon] centroid (equirectangular plot)
   var GEO = { FR:[46.6,2.4], BE:[50.5,4.5], DE:[51,10.5], ES:[40.2,-3.7], IT:[42.8,12.6], NL:[52.1,5.3], GB:[54,-2], PT:[39.6,-8],
@@ -171,7 +216,11 @@ const dashboardHTML = `<!DOCTYPE html>
     plus:'<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>',
     pin:'<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>',
     zap:'<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>',
-    crown:'<path d="M3 18h18l-1.4-9-4.1 3.2L12 6 8.5 12.2 4.4 9 3 18z"/>',
+    crown:'<path d="M3 7 8 11 12 5 16 11 21 7 19 17 5 17Z"/>',
+    lock:'<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+    fish:'<path d="M2 12c3-5 8-6 12-6 3 0 5 1 6 2-1 1-3 2-6 2-4 0-9-1-12 2zm0 0c3 5 8 6 12 6 3 0 5-1 6-2"/><circle cx="7" cy="11" r="1"/>',
+    swords:'<polyline points="14 4 20 4 20 10"/><line x1="20" y1="4" x2="4" y2="20"/><polyline points="10 20 4 20 4 14"/>',
+    target:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/>',
     check:'<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>',
     search:'<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>',
     globe:'<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>',
@@ -196,20 +245,42 @@ const dashboardHTML = `<!DOCTYPE html>
   // game's "Joueur-<pid>" fallback for games (S2/SSBU) that don't upload a readable name.
   function rn(p){ var n=LAST&&LAST.names&&p&&LAST.names[''+p.pid]; return (n&&n.name)||(p&&p.name)||''; }
   function ri(p){ var n=LAST&&LAST.names&&p&&LAST.names[''+p.pid]; return (n&&n.image)||(p&&p.miiUrl)||''; }
-  function av(p,size){ var cls=size||'s', inner; var img=ri(p);
-    if(img){ inner='<img src="'+esc(img)+'" alt="" onerror="this.style.display=\'none\'">'; }
-    else{ var pid=(p&&p.pid)||0, mc=p&&p.miiColor, bg;
-      if(mc){ bg='linear-gradient(135deg,'+mc+',rgba(0,0,0,.45))'; }
-      else{ var h1=(pid*47)%360,h2=(h1+38)%360; bg='linear-gradient(135deg,hsl('+h1+',62%,52%),hsl('+h2+',62%,40%))'; }
-      var ch=(rn(p)||'?').trim().charAt(0).toUpperCase()||'?';
-      inner='<span style="background:'+bg+';width:100%;height:100%;display:grid;place-items:center">'+esc(ch)+'</span>'; }
+  function av(p,size){ var cls=size||'s';
+    // Initiale colorée TOUJOURS en dessous ; la vraie pp (si le compte en a une) la recouvre.
+    // Si l'image 404/échoue, onerror la masque et l'initiale réapparaît (jamais d'avatar vide).
+    var pid=(p&&p.pid)||0, mc=p&&p.miiColor, bg;
+    if(mc){ bg='linear-gradient(135deg,'+mc+',rgba(0,0,0,.45))'; }
+    else{ var h1=(pid*47)%360,h2=(h1+38)%360; bg='linear-gradient(135deg,hsl('+h1+',62%,52%),hsl('+h2+',62%,40%))'; }
+    var ch=(rn(p)||'?').trim().charAt(0).toUpperCase()||'?';
+    var base='<span style="position:absolute;inset:0;background:'+bg+';display:grid;place-items:center">'+esc(ch)+'</span>';
+    var img=ri(p);
+    var pic=img?'<img src="'+esc(img)+'" alt="" style="position:absolute;inset:0" onerror="this.style.display=\'none\'">':'';
     var crown=(p&&(p.host||p.isHost))?'<span class="cr">'+icf('crown')+'</span>':'';
-    return '<span class="av '+cls+'">'+inner+crown+'</span>'; }
+    return '<span class="av '+cls+'"><span class="avc">'+base+pic+'</span>'+crown+'</span>'; }
   function protoColor(a){ var p=(a||'').split('::')[0]; var m={TicketGranting:'#b06bff',SecureConnection:'#3b8cff',Utility:'#ffce3a',Ranking:'#ff3b4e',DataStore:'#ff3b4e',MatchmakeExt:'#2ee06a',MatchMaking:'#2ee06a',MatchMakingExt:'#2ee06a',NATTraversal:'#ff913b',Notifications:'#2ad4e6'}; return m[p]||'#8b97c4'; }
   function setStatus(ok){ var d=document.getElementById('dot'),t=document.getElementById('livetxt'); if(ok){d.className='dot';t.textContent='EN DIRECT';t.parentNode.style.color='var(--green)';}else{d.className='dot off';t.textContent='injoignable';t.parentNode.style.color='var(--red)';} }
   document.getElementById('i_clock').innerHTML=ic('clock');
 
   function gameOf(d,key){ for(var i=0;i<d.games.length;i++) if(d.games[i].key===key) return d.games[i]; return null; }
+  // manual power controls: render start/stop buttons for allowlisted servers, and POST the action.
+  function pw(gm){
+    if(!gm||!gm.controllable) return '';
+    var on=gm.running;
+    return '<div class="pwr" onclick="event.stopPropagation()">'+
+      '<span class="pwrlbl '+(on?'on':'off')+'">'+ic('power')+(on?'Allumé':'Éteint')+'</span>'+
+      '<button class="pwbtn on" '+(on?'disabled':'')+' onclick="powerGame(\''+gm.key+'\',\'start\')">Allumer</button>'+
+      '<button class="pwbtn off" '+(on?'':'disabled')+' onclick="powerGame(\''+gm.key+'\',\'stop\')">Éteindre</button>'+
+    '</div>';
+  }
+  function powerGame(key,action){
+    var g=LAST&&gameOf(LAST,key); var label=(g&&g.label)||key;
+    if(action==='stop' && !confirm('Éteindre le serveur '+label+' ?\nLes joueurs connectés seront déconnectés.')) return;
+    var url='/api/power'+KEY+(KEY?'&':'?')+'game='+encodeURIComponent(key)+'&action='+action;
+    fetch(url,{method:'POST'})
+      .then(function(r){ return r.json().catch(function(){ return {ok:r.ok}; }); })
+      .then(function(j){ if(!j||!j.ok){ alert('Échec : '+((j&&j.error)||'commande refusée')); } })
+      .catch(function(){ alert('Requête échouée'); });
+  }
   function rateName(key){ return {mk8:'VR',s2:'Puissance',ssbu:'PSP'}[key]||'Score'; }
 
   // ---------- tabs ----------
@@ -217,7 +288,7 @@ const dashboardHTML = `<!DOCTYPE html>
     var h='<div class="tab '+(TAB==='overview'?'on':'')+'" onclick="go(\'overview\')">'+ic('layers')+'Vue d\'ensemble</div>';
     for(var i=0;i<d.games.length;i++){ var g=d.games[i]; var st=g.stats||{}; var on=g.online;
       h+='<div class="tab '+(TAB===g.key?'on':'')+'" onclick="go(\''+g.key+'\')" style="--gc:'+g.color+'">'+
-         '<span class="gd '+(on?'up':'')+'" style="background:'+(on?g.color:'')+';color:'+g.color+'"></span>'+
+         '<img class="tabico'+(on?'':' off')+'" src="gameicons/'+g.key+'.jpg" alt="" onerror="this.outerHTML=\'<span class=\\\'gd '+(on?'up':'')+'\\\' style=\\\'background:'+(on?g.color:'')+';color:'+g.color+'\\\'></span>\'">'+
          esc(g.label)+'<span class="cc">'+(on?(st.connected||0):'·')+'</span>'+(on?'':'<span class="x">hors-ligne</span>')+'</div>'; }
     document.getElementById('tabs').innerHTML=h;
   }
@@ -238,20 +309,20 @@ const dashboardHTML = `<!DOCTYPE html>
     h+='<div class="gstrip">';
     for(var i=0;i<d.games.length;i++){ var gm=d.games[i]; var s=gm.stats||{};
       h+='<div class="gcard" style="--gc:'+gm.color+'" onclick="go(\''+gm.key+'\')">'+
-        '<div class="gh"><span class="glogo" style="--gc:'+gm.color+'">'+esc(gm.label.charAt(0))+'</span><span class="gn">'+esc(gm.label)+'</span>'+
+        '<div class="gh"><span class="glogo" style="--gc:'+gm.color+'"><span class="gll">'+esc(gm.label.charAt(0))+'</span><img src="gameicons/'+gm.key+'.jpg" alt="" onerror="this.style.display=\'none\'"></span><span class="gn">'+esc(gm.label)+'</span>'+
         '<span class="gs '+(gm.online?'up':'down')+'">'+(gm.online?'EN LIGNE':'HORS-LIGNE')+'</span></div>'+
         '<div class="grow">'+
         '<div class="gm"><div class="v" style="color:'+gm.color+'">'+(gm.online?(s.connected||0):'—')+'</div><div class="k">connectés</div></div>'+
         '<div class="gm"><div class="v">'+(gm.online?(s.peakConnected||0):'—')+'</div><div class="k">pic</div></div>'+
         '<div class="gm"><div class="v">'+(gm.online?(s.activeLobbies||0):'—')+'</div><div class="k">lobbies</div></div>'+
         '<div class="gm"><div class="v">'+(gm.online?fmtN(s.totalRmc):'—')+'</div><div class="k">RMC</div></div>'+
-        '</div></div>';
+        '</div>'+pw(gm)+'</div>';
     }
     h+='</div>';
     // chart + map row
     h+='<div class="grid2">'+
       '<div><h2>'+ic('trend')+'Connexions en temps réel</h2><div class="panel"><div class="chartwrap" id="chart"></div>'+
-      '<div class="legend"><span><i style="background:var(--mk8)"></i>Mario Kart 8</span><span><i style="background:var(--s2)"></i>Splatoon 2</span><span><i style="background:var(--ssbu)"></i>Smash Ultimate</span><span><i style="background:var(--acnh)"></i>Animal Crossing</span></div></div></div>'+
+      '<div class="legend"><span><i style="background:var(--mk8)"></i>Mario Kart 8</span><span><i style="background:var(--s2)"></i>Splatoon 2</span><span><i style="background:var(--ssbu)"></i>Smash Ultimate</span><span><i style="background:var(--acnh)"></i>Animal Crossing</span><span><i style="background:var(--mc)"></i>Minecraft</span></div></div></div>'+
       '<div><h2>'+ic('globe')+'Joueurs par pays</h2><div class="panel"><div class="mapwrap" id="map"></div><div class="geolist" id="geolist" style="margin-top:12px"></div></div></div>'+
     '</div>';
     // unified feed
@@ -264,7 +335,7 @@ const dashboardHTML = `<!DOCTYPE html>
 
   function drawChart(d){
     var hi=d.history||[]; var el=document.getElementById('chart'); if(!el) return;
-    var W=600,H=200,pad=24; var keys=['mk8','s2','ssbu','acnh'];
+    var W=600,H=200,pad=24; var keys=['mk8','s2','ssbu','acnh','mc'];
     if(hi.length<2){ el.innerHTML='<div class="empty" style="height:100%;display:grid;place-items:center">Collecte des données…</div>'; return; }
     var maxv=1; for(var i=0;i<hi.length;i++){ var t=0; for(var k=0;k<keys.length;k++) t+=(hi[i].conn&&hi[i].conn[keys[k]])||0; if(t>maxv)maxv=t; }
     maxv=Math.ceil(maxv*1.2);
@@ -273,7 +344,7 @@ const dashboardHTML = `<!DOCTYPE html>
     var svg='<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none">';
     for(var gl=0;gl<=4;gl++){ var yy=pad+(H-2*pad)*gl/4; svg+='<line x1="'+pad+'" y1="'+yy+'" x2="'+(W-pad)+'" y2="'+yy+'" stroke="#26304f" stroke-width="1"/>'; svg+='<text x="'+(pad-4)+'" y="'+(yy+3)+'" fill="#586089" font-size="9" text-anchor="end">'+Math.round(maxv*(4-gl)/4)+'</text>'; }
     var cum=[]; for(var i=0;i<hi.length;i++) cum[i]=0;
-    var cols={mk8:'#ff3b4e',s2:'#2ee06a',ssbu:'#ff913b',acnh:'#4aa8e8'};
+    var cols={mk8:'#ff3b4e',s2:'#2ee06a',ssbu:'#ff913b',acnh:'#4aa8e8',mc:'#5d8c3f'};
     for(var k=0;k<keys.length;k++){ var kk=keys[k]; var area='M '+pad+' '+y(0); var top='';
       for(var i=0;i<hi.length;i++){ var v=(hi[i].conn&&hi[i].conn[kk])||0; var below=cum[i]; cum[i]+=v; top+=(i?' L ':'')+x(i).toFixed(1)+' '+y(cum[i]).toFixed(1); }
       // area between prev cum and new cum
@@ -334,6 +405,7 @@ const dashboardHTML = `<!DOCTYPE html>
     if(!gm.online||!gm.stats){ gv.innerHTML='<div class="empty" style="margin-top:20px">'+ic('power')+' Serveur '+esc(gm.label)+' hors-ligne.</div>'; return; }
     var s=gm.stats; var sv=s.server||{}; var gi=GAMEINFO[key]||{};
     var h='<div class="srv" style="border-left:3px solid '+gm.color+'">'+
+      '<span class="glogo" style="--gc:'+gm.color+';width:26px;height:26px;border-radius:7px"><span class="gll" style="font-size:12px">'+esc(gm.label.charAt(0))+'</span><img src="gameicons/'+gm.key+'.jpg" alt="" onerror="this.style.display=\'none\'"></span>'+
       '<span style="color:'+gm.color+';font-weight:800">'+esc(gm.label)+'</span>'+
       '<span>'+ic('key')+'Clé <b>'+esc(sv.accessKey)+'</b></span>'+
       '<span>'+ic('net')+'Secure <b>:'+esc(gi.port||sv.securePort)+'</b></span>'+
@@ -348,18 +420,20 @@ const dashboardHTML = `<!DOCTYPE html>
     h+='<h2>'+ic('layers')+'Lobbies <span class="cnt">'+((s.gatherings||[]).length)+'</span></h2>';
     if(!s.gatherings||!s.gatherings.length){ h+='<div class="empty">Aucun lobby actif.</div>'; }
     else{ h+='<div class="lobbies">'; for(var i=0;i<s.gatherings.length;i++){ var lo=s.gatherings[i]; var bcls=lo.count>=2?'match':'wait'; var pct=Math.min(100,Math.round(100*lo.count/(lo.max||8)));
-      h+='<div class="lobby" style="--gc:'+gm.color+'"><div class="top"><span class="gid">'+ic('hash')+'Lobby '+lo.id+' <span class="modetag">'+ic('flag')+esc(displayMode(key,lo.type))+'</span></span><span class="badge '+bcls+'">'+ic(lo.count>=2?'check':'search')+esc(lo.state)+'</span></div>';
-      h+='<div class="meta"><span>'+ic('users')+'<b>'+lo.count+'</b>/'+lo.max+'</span>'+(lo.vr&&key==='mk8'?'<span class="ratetag">'+rateName(key)+' '+lo.vr+'</span>':'')+'<span>'+ic('crown','crown')+'<b>'+esc(lo.hostName)+'</b></span></div>';
+      h+='<div class="lobby" style="--gc:'+((key==='s2'||key==='mk8')?modeInfo(key,lo).col:gm.color)+'"><div class="top"><span class="gid">'+ic('hash')+'Lobby '+lo.id+' '+modeBadge(key,lo)+'</span><span class="badge '+bcls+'">'+ic(lo.count>=2?'check':'search')+esc(lo.state)+'</span></div>';
+      h+='<div class="meta"><span>'+ic('users')+'<b>'+lo.count+'</b>/'+lo.max+'</span>'+(lo.vr&&key==='mk8'?'<span class="ratetag">'+rateName(key)+' '+lo.vr+'</span>':'')+'<span>'+ic('crown','crown')+'<b>'+esc(rn({pid:lo.hostPid,name:lo.hostName}))+'</b></span></div>';
       h+='<div class="occ"><i style="width:'+pct+'%"></i></div><div class="parts">';
-      var pls=lo.players||[]; for(var j=0;j<pls.length;j++){ var p=pls[j]; h+='<span class="pill">'+av(p)+'<b>'+esc(rn(p))+'</b>'+(p.vr&&key==='mk8'?'<span class="vr">'+p.vr+'</span>':'')+'</span>'; }
+      var pls=lo.players||[]; for(var j=0;j<pls.length;j++){ var p=pls[j]; h+='<span class="pill">'+av(p)+'<b>'+esc(rn(p))+'</b><span class="ppid">'+ic('hash')+p.pid+'</span>'+(p.vr&&key==='mk8'?'<span class="vr">'+p.vr+'</span>':'')+'</span>'; }
       h+='</div></div>'; } h+='</div>'; }
     // players
     h+='<h2>'+ic('users')+'Joueurs <span class="cnt">'+((s.players||[]).length)+'</span></h2>';
     if(!s.players||!s.players.length){ h+='<div class="empty">Personne de connecté.</div>'; }
-    else{ h+='<div class="players">'; for(var k=0;k<s.players.length;k++){ var pl=s.players[k]; var scls=pl.gathering?'lobby':'online';
+    else{ var gmap={}; for(var gi2=0;gi2<(s.gatherings||[]).length;gi2++){ gmap[s.gatherings[gi2].id]=s.gatherings[gi2]; }
+      h+='<div class="players">'; for(var k=0;k<s.players.length;k++){ var pl=s.players[k]; var scls=pl.gathering?'lobby':'online';
       var loc=pl.country?(flag(pl.cc)+' '+esc(pl.country)+(pl.city?(' · '+esc(pl.city)):'')):'<span style="color:var(--faint)">localisation…</span>';
       h+='<div class="pcard"><div class="hd">'+av(pl,'m')+'<div class="who"><div class="nm">'+esc(rn(pl))+(rn(pl).indexOf('Joueur-')===0?' <span class="auto">auto</span>':'')+(pl.isHost?ic('crown','crown'):'')+'</div><div class="sub">'+ic('hash')+'<span class="mono">'+pl.pid+'</span></div></div><span class="st '+scls+'">'+ic(pl.gathering?'usercheck':'user')+esc(pl.state)+'</span></div><div class="kv">';
-      h+='<div><div class="k">'+ic('flag')+'Mode</div><div class="v">'+esc(displayMode(key,pl.mode))+'</div></div>';
+      var plo=pl.gathering?gmap[pl.gathering]:null;
+      h+='<div><div class="k">'+ic('flag')+'Mode</div><div class="v">'+(plo?modeBadge(key,plo):(key==='mk8'&&pl.mode?esc(pl.mode):'<span style="color:var(--faint)">—</span>'))+'</div></div>';
       if(key==='mk8'){ h+='<div><div class="k">'+ic('gauge')+rateName(key)+'</div><div class="v">'+(pl.vr?'<span class="ratetag">'+pl.vr+'</span>':'—')+'</div></div>'; }
       else{ h+='<div><div class="k">'+ic('net')+'NAT</div><div class="v">'+(pl.natType?esc(pl.natType):'—')+'</div></div>'+
             '<div><div class="k">'+ic('gauge')+'Ping</div><div class="v">'+(pl.ping?pl.ping+' ms':'—')+'</div></div>'; }

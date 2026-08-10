@@ -25,6 +25,7 @@ import (
 //go:embed worldmap.jpg
 var worldMapJPG []byte
 
+
 // ---- game sources ----------------------------------------------------------
 
 type gameSrc struct {
@@ -46,13 +47,15 @@ func sources() []gameSrc {
 	tok := os.Getenv("DASH_TOKEN")
 	return []gameSrc{
 		{Key: "mk8", Label: "Mario Kart 8 DX", Color: "#ff3b4e",
-			URL: envOr("DASH_MK8_URL", "http://mk8nex:8082"), Token: envOr("DASH_MK8_TOKEN", tok)},
+			URL: envOr("DASH_MK8_URL", "http://localhost:8082"), Token: envOr("DASH_MK8_TOKEN", tok)},
 		{Key: "s2", Label: "Splatoon 2", Color: "#2ee06a",
-			URL: envOr("DASH_S2_URL", "http://s2nex:8083"), Token: envOr("DASH_S2_TOKEN", tok)},
+			URL: envOr("DASH_S2_URL", "http://localhost:8083"), Token: envOr("DASH_S2_TOKEN", tok)},
 		{Key: "ssbu", Label: "Smash Bros Ultimate", Color: "#ff913b",
-			URL: envOr("DASH_SSBU_URL", "http://ssbusecure:8084"), Token: envOr("DASH_SSBU_TOKEN", tok)},
+			URL: envOr("DASH_SSBU_URL", "http://localhost:8084"), Token: envOr("DASH_SSBU_TOKEN", tok)},
 		{Key: "acnh", Label: "Animal Crossing: NH", Color: "#4aa8e8",
-			URL: envOr("DASH_ACNH_URL", "http://acnhnex:8086"), Token: envOr("DASH_ACNH_TOKEN", tok)},
+			URL: envOr("DASH_ACNH_URL", "http://localhost:8086"), Token: envOr("DASH_ACNH_TOKEN", tok)},
+		{Key: "mc", Label: "Minecraft", Color: "#5d8c3f",
+			URL: envOr("DASH_MC_URL", "http://minecraft:8087"), Token: envOr("DASH_MC_TOKEN", tok)},
 	}
 }
 
@@ -175,7 +178,8 @@ func recordHistory() {
 // pseudo (+ avatar) from nextendo-account /api/names and let the UI override the label.
 
 type nameEntry struct {
-	Name string `json:"name"`
+	Name  string `json:"name"`
+	Image string `json:"image,omitempty"` // URL d'avatar (pp réelle) servie par nextendo-account /api/avatar
 }
 
 // cachedName is a resolved (or negatively-resolved) pseudo plus the time it was
@@ -185,8 +189,9 @@ type nameEntry struct {
 // picked up its real pseudo. That is exactly why a real console kept showing
 // "Joueur-6" even after its NEX PID correctly became the account PID (1800000006).
 type cachedName struct {
-	name string
-	at   int64 // unix seconds when cached
+	name  string
+	image string // URL d'avatar (vide si le compte n'a pas de pp)
+	at    int64  // unix seconds when cached
 }
 
 var (
@@ -280,7 +285,7 @@ func resolveNames(client *http.Client) {
 	stamp := time.Now().Unix()
 	for ps, ne := range out.Names {
 		if pid, err := strconv.ParseUint(ps, 10, 64); err == nil {
-			nameCache[pid] = cachedName{name: ne.Name, at: stamp}
+			nameCache[pid] = cachedName{name: ne.Name, image: ne.Image, at: stamp}
 		}
 	}
 	for _, p := range want { // negative-cache PIDs still without an account (retried after negNameTTL)
@@ -297,7 +302,7 @@ func namesPayload() map[string]nameEntry {
 	out := map[string]nameEntry{}
 	for pid, c := range nameCache {
 		if c.name != "" {
-			out[strconv.FormatUint(pid, 10)] = nameEntry{Name: c.name}
+			out[strconv.FormatUint(pid, 10)] = nameEntry{Name: c.name, Image: c.image}
 		}
 	}
 	return out
@@ -306,12 +311,14 @@ func namesPayload() map[string]nameEntry {
 // ---- unified payload -------------------------------------------------------
 
 type gameOut struct {
-	Key     string          `json:"key"`
-	Label   string          `json:"label"`
-	Color   string          `json:"color"`
-	Online  bool            `json:"online"`
-	AgeSecs int             `json:"ageSeconds"`
-	Stats   json.RawMessage `json:"stats"`
+	Key          string          `json:"key"`
+	Label        string          `json:"label"`
+	Color        string          `json:"color"`
+	Online       bool            `json:"online"`
+	AgeSecs      int             `json:"ageSeconds"`
+	Stats        json.RawMessage `json:"stats"`
+	Controllable bool            `json:"controllable"` // a start/stop button is offered (allowlisted container)
+	Running      bool            `json:"running"`      // real Docker container state (for the button); falls back to Online
 }
 
 type globalOut struct {
@@ -346,21 +353,41 @@ func buildUnified() unified {
 			go0.Online = snap.Online
 			go0.Stats = snap.Raw
 			go0.AgeSecs = int(time.Since(snap.LastPoll).Seconds())
-			g.Connected += snap.R.Connected
-			g.InLobby += snap.R.InLobby
-			g.ActiveLobbies += snap.R.ActiveLobbies
+			// Un jeu HORS-LIGNE (poll en échec) ne compte PAS dans les totaux « live ». Sinon
+			// mergeSnapshot conserve son dernier rollup connu et il reste affiché « en ligne »
+			// indéfiniment : relevé en prod, acnh éteint depuis 5 jours comptait toujours 1
+			// joueur dans le total global. Les compteurs live ne reflètent que les serveurs
+			// réellement joignables ; l'onglet du jeu garde son dernier Raw, marqué hors-ligne.
+			if snap.Online {
+				g.Connected += snap.R.Connected
+				g.InLobby += snap.R.InLobby
+				g.ActiveLobbies += snap.R.ActiveLobbies
+				g.PerGame[s.Key] = snap.R.Connected
+				g.GamesOnline++
+			} else {
+				g.PerGame[s.Key] = 0
+			}
 			g.TotalRMC += snap.R.TotalRMC
-			g.PerGame[s.Key] = snap.R.Connected
 			if snap.R.PeakConnected > maxGamePeak {
 				maxGamePeak = snap.R.PeakConnected
-			}
-			if snap.Online {
-				g.GamesOnline++
 			}
 		}
 		games = append(games, go0)
 	}
 	mu.RUnlock()
+
+	// Power state for the start/stop buttons — queried from Docker OUTSIDE the cache lock
+	// (a Docker call must never be made while holding mu). Only allowlisted containers.
+	for i := range games {
+		if name, ctrl := powerContainers[games[i].Key]; ctrl {
+			games[i].Controllable = true
+			if running, ok := containerRunning(name); ok {
+				games[i].Running = running
+			} else {
+				games[i].Running = games[i].Online // Docker unreachable -> fall back to poll state
+			}
+		}
+	}
 	if g.Connected > peakConn {
 		peakConn = g.Connected
 	}
@@ -416,6 +443,12 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")
 		_ = json.NewEncoder(w).Encode(buildUnified())
+	})
+	mux.HandleFunc("/api/power", func(w http.ResponseWriter, r *http.Request) {
+		if !authed(w, r) { // same view-token gate as the rest of the dashboard
+			return
+		}
+		powerHandler(w, r)
 	})
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) { fmt.Fprintln(w, "ok") })
 	mux.HandleFunc("/worldmap.jpg", func(w http.ResponseWriter, r *http.Request) {

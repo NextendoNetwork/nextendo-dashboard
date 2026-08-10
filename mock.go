@@ -3,7 +3,7 @@ package main
 // Mock data generator: set NEXTENDO_DASH_MOCK=1 to drive the unified UI with
 // synthetic-but-realistic per-game stats that drift over time, so the front-end can
 // be developed without the three live servers. Shape MUST match each game server's
-// /api/stats (see mk8-secure-local/dashboard.go apiStats).
+// /api/stats (see the previous stack/dashboard.go apiStats).
 
 import (
 	"encoding/json"
@@ -71,7 +71,7 @@ type mStats struct {
 	Methods        []map[string]interface{} `json:"methods"`
 }
 
-var mockNames = []string{"Kazu", "Marin", "Léo", "Yuki", "Sora", "Nina", "Tom", "Aya", "Max", "Rin", "Eli", "Zoé", "Kai", "Mia", "Théo", "Luna"}
+var mockNames = []string{"Player", "Marin", "Léo", "Yuki", "Sora", "Nina", "Tom", "Aya", "Max", "Rin", "Eli", "Zoé", "Kai", "Mia", "Théo", "Luna"}
 var mockGeo = []struct{ c, cc, city, isp string }{
 	{"France", "FR", "Paris", "Orange"}, {"France", "FR", "Lyon", "Free"},
 	{"Belgique", "BE", "Bruxelles", "Proximus"}, {"Canada", "CA", "Montréal", "Bell"},
@@ -177,7 +177,7 @@ func mockGame(key string, t int64) (json.RawMessage, rollup) {
 		Server: map[string]interface{}{
 			"accessKey": map[string]string{"mk8": "25dbf96a", "s2": "f6c2bcb3", "ssbu": "2c4f5e21", "acnh": "7d9e4b02"}[key],
 			"nexVersion": map[string]string{"mk8": "4.3.3", "s2": "3.10.0", "ssbu": "4.6.3", "acnh": "4.0.0"}[key],
-			"authPort": "443", "securePort": map[string]int{"mk8": 60003, "s2": 60004, "ssbu": 60005, "acnh": 60007}[key],
+			"authPort": "443 (the reverse proxy SNI)", "securePort": map[string]int{"mk8": 60003, "s2": 60004, "ssbu": 60005, "acnh": 60007}[key],
 			"sniHost": "nintendo.net", "sessionKeyLen": 32,
 		},
 		Players: players, Gatherings: gatherings, Events: events, Methods: methods,
