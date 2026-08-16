@@ -56,10 +56,18 @@ func sources() []gameSrc {
 			URL: envOr("DASH_ACNH_URL", "http://localhost:8086"), Token: envOr("DASH_ACNH_TOKEN", tok)},
 		{Key: "mc", Label: "Minecraft", Color: "#5d8c3f",
 			URL: envOr("DASH_MC_URL", "http://minecraft:8087"), Token: envOr("DASH_MC_TOKEN", tok)},
+		// Defaults below are LOCAL DEV fallbacks only, same as every other entry in this
+		// list — override with the real env var in any actual deployment. Real bug caught
+		// in review 2026-08-16: DASH_ARMS_URL defaulted to :8085, which is this very
+		// dashboard's own listening port in production, so an unconfigured deploy would
+		// poll itself in a loop every 2s. Fixed to :8091 (ARMS's real confirmed dashboard
+		// port). DASH_MTA_URL's default is now :8084, matching mario-tennis-aces's own
+		// example.env DASH_PORT default (it previously said :8088, which matched neither
+		// that repo nor anything real).
 		{Key: "arms", Label: "ARMS", Color: "#ff4fa3",
-			URL: envOr("DASH_ARMS_URL", "http://localhost:8085"), Token: envOr("DASH_ARMS_TOKEN", tok)},
+			URL: envOr("DASH_ARMS_URL", "http://localhost:8091"), Token: envOr("DASH_ARMS_TOKEN", tok)},
 		{Key: "mta", Label: "Mario Tennis Aces", Color: "#ffd23f",
-			URL: envOr("DASH_MTA_URL", "http://localhost:8088"), Token: envOr("DASH_MTA_TOKEN", tok)},
+			URL: envOr("DASH_MTA_URL", "http://localhost:8084"), Token: envOr("DASH_MTA_TOKEN", tok)},
 	}
 }
 

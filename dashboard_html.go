@@ -163,15 +163,19 @@ const dashboardHTML = `<!DOCTYPE html>
   var KEY = location.search || '';
   var TAB = 'overview';
   var GAMECOLORS = { mk8:'#ff3b4e', s2:'#2ee06a', ssbu:'#ff913b', acnh:'#4aa8e8', mc:'#5d8c3f', arms:'#ff4fa3', mta:'#ffd23f' };
-  // correct per-game identity (the shared MK8 dashboard mislabels S2/SSBU host/port/NEX)
+  // correct per-game identity (the shared MK8 dashboard mislabels S2/SSBU host/port/NEX).
+  // ARMS/MTA are deliberately NOT here: unlike mk8/s2/ssbu (which share one dashboard that
+  // mislabels itself), ARMS and MTA each report their own real port/NEX version honestly via
+  // their own /api/stats — gi.port||sv.securePort below falls through to that correctly on
+  // its own. A previous version of this table hardcoded arms:port 60006, which happened to
+  // be a different game's port in production and silently overrode the real 60011 ARMS
+  // reports about itself — caught in review 2026-08-16.
   var GAMEINFO = {
     mk8:{ nex:'4.3.3', sni:'the-game-host', port:60003 },
     s2:{  nex:'4.0.0', sni:'the-game-host', port:60004 },
     ssbu:{nex:'4.6.3', sni:'the-game-host', port:60005 },
     acnh:{nex:'4.0.0', sni:'the-game-host', port:60007 },
-    mc:{  nex:'4.3.1', sni:'the-game-host', port:60006 },
-    arms:{nex:'4.3.5', sni:'the-game-host', port:60006 },
-    mta:{ nex:'4.3.5', sni:'the-game-host', port:60010 }
+    mc:{  nex:'4.3.1', sni:'the-game-host', port:60006 }
   };
   // Real game mode per lobby. S2 encodes it in the MatchmakeSession game_mode (+ maxParticipants
   // and the private-room code): mode 1 = Ranked, mode 0 = Turf War (confirmed in-game), a
