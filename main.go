@@ -1,6 +1,6 @@
 // nextendo-dashboard is the UNIFIED live-monitoring site for the private Nextendo
 // NEX secure servers (Mario Kart 8 Deluxe, Splatoon 2, Super Smash Bros Ultimate,
-// Animal Crossing: New Horizons). Each game server already exposes a per-game
+// Animal Crossing: New Horizons, Minecraft, ARMS, Mario Tennis Aces). Each game server already exposes a per-game
 // /api/stats JSON on its own dashboard port; this aggregator polls them server-side, tags each by game,
 // rolls them up into one payload (+ a short history for the realtime charts) and
 // serves a single rich UI with game tabs and a global overview.
@@ -56,6 +56,10 @@ func sources() []gameSrc {
 			URL: envOr("DASH_ACNH_URL", "http://localhost:8086"), Token: envOr("DASH_ACNH_TOKEN", tok)},
 		{Key: "mc", Label: "Minecraft", Color: "#5d8c3f",
 			URL: envOr("DASH_MC_URL", "http://minecraft:8087"), Token: envOr("DASH_MC_TOKEN", tok)},
+		{Key: "arms", Label: "ARMS", Color: "#ff4fa3",
+			URL: envOr("DASH_ARMS_URL", "http://localhost:8085"), Token: envOr("DASH_ARMS_TOKEN", tok)},
+		{Key: "mta", Label: "Mario Tennis Aces", Color: "#ffd23f",
+			URL: envOr("DASH_MTA_URL", "http://localhost:8088"), Token: envOr("DASH_MTA_TOKEN", tok)},
 	}
 }
 
