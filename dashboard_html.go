@@ -12,7 +12,7 @@ const dashboardHTML = `<!DOCTYPE html>
 <style>
   :root{ --bg:#06080f; --bg2:#0c1020; --card:#121830; --card2:#19203c; --line:#26304f; --line2:#33406b;
          --txt:#eef2ff; --muted:#8b97c4; --faint:#586089;
-         --mk8:#ff3b4e; --s2:#2ee06a; --ssbu:#ff913b; --acnh:#4aa8e8; --mc:#5d8c3f; --acc:#6aa6ff;
+         --mk8:#ff3b4e; --s2:#2ee06a; --ssbu:#ff913b; --acnh:#4aa8e8; --mc:#5d8c3f; --arms:#ff4fa3; --mta:#ffd23f; --acc:#6aa6ff;
          --red:#ff3b4e; --blue:#3b8cff; --yellow:#ffce3a; --green:#2ee06a; --purple:#b06bff; --orange:#ff913b; --cyan:#2ad4e6; }
   *{ box-sizing:border-box; }
   ::-webkit-scrollbar{ width:10px; height:10px; } ::-webkit-scrollbar-thumb{ background:var(--line2); border-radius:6px; } ::-webkit-scrollbar-track{ background:transparent; }
@@ -162,8 +162,14 @@ const dashboardHTML = `<!DOCTYPE html>
 <script>
   var KEY = location.search || '';
   var TAB = 'overview';
-  var GAMECOLORS = { mk8:'#ff3b4e', s2:'#2ee06a', ssbu:'#ff913b', acnh:'#4aa8e8', mc:'#5d8c3f' };
-  // correct per-game identity (the shared MK8 dashboard mislabels S2/SSBU host/port/NEX)
+  var GAMECOLORS = { mk8:'#ff3b4e', s2:'#2ee06a', ssbu:'#ff913b', acnh:'#4aa8e8', mc:'#5d8c3f', arms:'#ff4fa3', mta:'#ffd23f' };
+  // correct per-game identity (the shared MK8 dashboard mislabels S2/SSBU host/port/NEX).
+  // ARMS/MTA are deliberately NOT here: unlike mk8/s2/ssbu (which share one dashboard that
+  // mislabels itself), ARMS and MTA each report their own real port/NEX version honestly via
+  // their own /api/stats — gi.port||sv.securePort below falls through to that correctly on
+  // its own. A previous version of this table hardcoded arms:port 60006, which happened to
+  // be a different game's port in production and silently overrode the real 60011 ARMS
+  // reports about itself — caught in review 2026-08-16.
   var GAMEINFO = {
     mk8:{ nex:'4.3.3', sni:'the-game-host', port:60003 },
     s2:{  nex:'4.0.0', sni:'the-game-host', port:60004 },
@@ -322,7 +328,7 @@ const dashboardHTML = `<!DOCTYPE html>
     // chart + map row
     h+='<div class="grid2">'+
       '<div><h2>'+ic('trend')+'Connexions en temps réel</h2><div class="panel"><div class="chartwrap" id="chart"></div>'+
-      '<div class="legend"><span><i style="background:var(--mk8)"></i>Mario Kart 8</span><span><i style="background:var(--s2)"></i>Splatoon 2</span><span><i style="background:var(--ssbu)"></i>Smash Ultimate</span><span><i style="background:var(--acnh)"></i>Animal Crossing</span><span><i style="background:var(--mc)"></i>Minecraft</span></div></div></div>'+
+      '<div class="legend"><span><i style="background:var(--mk8)"></i>Mario Kart 8</span><span><i style="background:var(--s2)"></i>Splatoon 2</span><span><i style="background:var(--ssbu)"></i>Smash Ultimate</span><span><i style="background:var(--acnh)"></i>Animal Crossing</span><span><i style="background:var(--mc)"></i>Minecraft</span><span><i style="background:var(--arms)"></i>ARMS</span><span><i style="background:var(--mta)"></i>Mario Tennis Aces</span></div></div></div>'+
       '<div><h2>'+ic('globe')+'Joueurs par pays</h2><div class="panel"><div class="mapwrap" id="map"></div><div class="geolist" id="geolist" style="margin-top:12px"></div></div></div>'+
     '</div>';
     // unified feed
@@ -335,7 +341,7 @@ const dashboardHTML = `<!DOCTYPE html>
 
   function drawChart(d){
     var hi=d.history||[]; var el=document.getElementById('chart'); if(!el) return;
-    var W=600,H=200,pad=24; var keys=['mk8','s2','ssbu','acnh','mc'];
+    var W=600,H=200,pad=24; var keys=['mk8','s2','ssbu','acnh','mc','arms','mta'];
     if(hi.length<2){ el.innerHTML='<div class="empty" style="height:100%;display:grid;place-items:center">Collecte des données…</div>'; return; }
     var maxv=1; for(var i=0;i<hi.length;i++){ var t=0; for(var k=0;k<keys.length;k++) t+=(hi[i].conn&&hi[i].conn[keys[k]])||0; if(t>maxv)maxv=t; }
     maxv=Math.ceil(maxv*1.2);
@@ -344,7 +350,7 @@ const dashboardHTML = `<!DOCTYPE html>
     var svg='<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none">';
     for(var gl=0;gl<=4;gl++){ var yy=pad+(H-2*pad)*gl/4; svg+='<line x1="'+pad+'" y1="'+yy+'" x2="'+(W-pad)+'" y2="'+yy+'" stroke="#26304f" stroke-width="1"/>'; svg+='<text x="'+(pad-4)+'" y="'+(yy+3)+'" fill="#586089" font-size="9" text-anchor="end">'+Math.round(maxv*(4-gl)/4)+'</text>'; }
     var cum=[]; for(var i=0;i<hi.length;i++) cum[i]=0;
-    var cols={mk8:'#ff3b4e',s2:'#2ee06a',ssbu:'#ff913b',acnh:'#4aa8e8',mc:'#5d8c3f'};
+    var cols={mk8:'#ff3b4e',s2:'#2ee06a',ssbu:'#ff913b',acnh:'#4aa8e8',mc:'#5d8c3f',arms:'#ff4fa3',mta:'#ffd23f'};
     for(var k=0;k<keys.length;k++){ var kk=keys[k]; var area='M '+pad+' '+y(0); var top='';
       for(var i=0;i<hi.length;i++){ var v=(hi[i].conn&&hi[i].conn[kk])||0; var below=cum[i]; cum[i]+=v; top+=(i?' L ':'')+x(i).toFixed(1)+' '+y(cum[i]).toFixed(1); }
       // area between prev cum and new cum
@@ -463,7 +469,7 @@ const dashboardHTML = `<!DOCTYPE html>
     document.getElementById('uptime').textContent=fmtDur(d.uptimeSeconds);
     if(TAB==='overview') renderOverview(d); else renderGame(d,TAB);
   }
-  document.getElementById('foot').innerHTML=ic('globe')+' Agrégation live des 4 serveurs NEX privés (VPS), rafraîchie toutes les 2 s · géoloc ip-api.com · drapeaux flagcdn.com · rendu Mii Studio Nintendo.';
+  document.getElementById('foot').innerHTML=ic('globe')+' Agrégation live des 7 serveurs NEX privés (VPS), rafraîchie toutes les 2 s · géoloc ip-api.com · drapeaux flagcdn.com · rendu Mii Studio Nintendo.';
   function tick(){ fetch('/api/stats'+KEY,{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){ setStatus(true); draw(d); }).catch(function(e){ setStatus(false); }); }
   tick(); setInterval(tick,2000);
 </script>
