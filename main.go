@@ -10,6 +10,8 @@
 package main
 
 import (
+	"crypto/subtle"
+	"compress/gzip"
 	"context"
 	_ "embed"
 	"encoding/json"
@@ -50,12 +52,35 @@ func sources() []gameSrc {
 			URL: envOr("DASH_MK8_URL", "http://localhost:8082"), Token: envOr("DASH_MK8_TOKEN", tok)},
 		{Key: "s2", Label: "Splatoon 2", Color: "#2ee06a",
 			URL: envOr("DASH_S2_URL", "http://localhost:8083"), Token: envOr("DASH_S2_TOKEN", tok)},
+		// Splatoon 3 is NPLN, not NEX: the npln-s3 server publishes the same /api/stats shape
+		// (gRPC calls counted as "RMC", game sessions as gatherings). Its container has no
+		// published port — we reach it over the shared docker network.
+		{Key: "s3", Label: "Splatoon 3", Color: "#e8ff2a",
+			URL: envOr("DASH_S3_URL", "http://localhost:8089"), Token: envOr("DASH_S3_TOKEN", tok)},
 		{Key: "ssbu", Label: "Smash Bros Ultimate", Color: "#ff913b",
 			URL: envOr("DASH_SSBU_URL", "http://localhost:8084"), Token: envOr("DASH_SSBU_TOKEN", tok)},
+		// the service-nexgo is the stopped container of the previous stack; the live ACNH
+		// server is the service (the in-house core), so poll that one.
 		{Key: "acnh", Label: "Animal Crossing: NH", Color: "#4aa8e8",
 			URL: envOr("DASH_ACNH_URL", "http://localhost:8086"), Token: envOr("DASH_ACNH_TOKEN", tok)},
+		// Minecraft n'utilise PAS le jeton commun : son serveur a le sien. Il doit donc
+		// arriver par DASH_MC_TOKEN dans l'environnement du conteneur. L'écrire en dur
+		// ici mettrait un secret vivant dans le dépôt, et sa réponse contient les
+		// adresses IP des joueurs.
 		{Key: "mc", Label: "Minecraft", Color: "#5d8c3f",
-			URL: envOr("DASH_MC_URL", "http://minecraft:8087"), Token: envOr("DASH_MC_TOKEN", tok)},
+			URL: envOr("DASH_MC_URL", "http://localhost:8087"), Token: envOr("DASH_MC_TOKEN", tok)},
+		{Key: "lm3", Label: "Luigi's Mansion 3", Color: "#9b6ef3",
+			URL: envOr("DASH_LM3_URL", "http://localhost:8089"), Token: envOr("DASH_LM3_TOKEN", tok)},
+		// ARMS partage le jeton commun et répond sur :8091. Son /api/stats rend
+		// exactement la même forme que lm3, donc aucune adaptation n'est nécessaire.
+		// Attention si on teste à la main : ce serveur veut le jeton en ?key=, pas
+		// en en-tête Authorization — un Bearer se fait répondre « forbidden ».
+		{Key: "arms", Label: "ARMS", Color: "#2ad4e6",
+			URL: envOr("DASH_ARMS_URL", "http://localhost:8091"), Token: envOr("DASH_ARMS_TOKEN", tok)},
+		// Mario Tennis Aces. Le conteneur s appelle `tennis` et son tableau de bord
+		// ecoute sur 8092 — surtout pas 8084, qui est celui de SSBU chez nous.
+		{Key: "mta", Label: "Mario Tennis Aces", Color: "#ff4fa3",
+			URL: envOr("DASH_MTA_URL", "http://localhost:8092"), Token: envOr("DASH_MTA_TOKEN", tok)},
 	}
 }
 
@@ -187,7 +212,7 @@ type nameEntry struct {
 // no account when first seen — a disposable counter PID, or any PID resolved during
 // a brief account-server restart window — was negative-cached FOREVER and never
 // picked up its real pseudo. That is exactly why a real console kept showing
-// "Joueur-6" even after its NEX PID correctly became the account PID (1800000006).
+// "Joueur-6" even after its NEX PID correctly became the account PID (the account PID).
 type cachedName struct {
 	name  string
 	image string // URL d'avatar (vide si le compte n'a pas de pp)
@@ -215,12 +240,16 @@ func nameNeedsResolve(c cachedName, now int64) bool {
 	return age >= posNameTTL
 }
 
-func accountURL() string { return envOr("DASH_ACCOUNT_URL", "http://nextendo-account:8080") }
+func accountURL() string { return envOr("DASH_ACCOUNT_URL", "http://localhost:8080") }
 
 type pidScrape struct {
-	Players    []struct{ PID uint64 `json:"pid"` } `json:"players"`
+	Players []struct {
+		PID uint64 `json:"pid"`
+	} `json:"players"`
 	Gatherings []struct {
-		Players []struct{ PID uint64 `json:"pid"` } `json:"players"`
+		Players []struct {
+			PID uint64 `json:"pid"`
+		} `json:"players"`
 	} `json:"gatherings"`
 }
 
@@ -419,7 +448,19 @@ var peakConn int
 
 func main() {
 	port := envOr("DASH_PORT", envOr("PORT", "8090")) // DASH_PORT (deploy) > PORT (local) > 8090
-	token := os.Getenv("DASH_VIEW_TOKEN")             // optional gate for the unified site itself
+	token := os.Getenv("DASH_VIEW_TOKEN")
+
+	// ⚠️ ÉCHEC FERMÉ. Un jeton absent rendait authed() vrai pour tout le monde, ce qui
+	// ouvrait /api/kick, /api/ban, /api/power et /api/flag à n'importe qui. Refuser de
+	// démarrer se remarque tout de suite ; servir ouvert ne se remarque jamais.
+	//
+	// Le contrôle est ici ET PAS SEULEMENT dans authed() : sans lui, la comparaison à temps
+	// constant ci-dessous rendrait vrai pour une clé vide face à un jeton vide — le même
+	// trou, sous une forme moins visible.
+	if token == "" {
+		fmt.Println("[nextendo-dashboard] DASH_VIEW_TOKEN absent : refus de démarrer.")
+		os.Exit(1)
+	}
 
 	if os.Getenv("NEXTENDO_DASH_MOCK") == "1" {
 		go mockLoop()
@@ -428,7 +469,9 @@ func main() {
 	}
 
 	authed := func(w http.ResponseWriter, r *http.Request) bool {
-		if token == "" || r.URL.Query().Get("key") == token {
+		// Comparaison a temps constant : le jeton voyage dans l'URL, autant ne pas y ajouter
+		// une fuite par le temps de reponse.
+		if subtle.ConstantTimeCompare([]byte(r.URL.Query().Get("key")), []byte(token)) == 1 {
 			return true
 		}
 		http.Error(w, "forbidden", http.StatusForbidden)
@@ -442,6 +485,19 @@ func main() {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")
+		// Compression : la charge utile fait ~180 Ko et le navigateur la redemande
+		// toutes les 2 s, soit plus de 5 Mo par minute et par spectateur. Du JSON
+		// se compresse d'environ neuf fois : autant de données en moins sur le
+		// réseau, donc autant d'occasions en moins qu'une requête échoue et que le
+		// tableau de bord s'affiche « injoignable ».
+		if strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+			w.Header().Set("Content-Encoding", "gzip")
+			w.Header().Set("Vary", "Accept-Encoding")
+			gz, _ := gzip.NewWriterLevel(w, gzip.BestSpeed)
+			defer gz.Close()
+			_ = json.NewEncoder(gz).Encode(buildUnified())
+			return
+		}
 		_ = json.NewEncoder(w).Encode(buildUnified())
 	})
 	mux.HandleFunc("/api/power", func(w http.ResponseWriter, r *http.Request) {
@@ -450,19 +506,48 @@ func main() {
 		}
 		powerHandler(w, r)
 	})
+	// Moderation. Meme porte que le reste du site pour le kick, qui est reversible.
+	// Le ban, lui, exige EN PLUS la cle d administration en en-tete : le jeton de
+	// consultation voyage dans l URL, donc dans les historiques et les captures.
+	mux.HandleFunc("/api/kick", func(w http.ResponseWriter, r *http.Request) {
+		if !authed(w, r) {
+			return
+		}
+		kickHandler(w, r)
+	})
+	mux.HandleFunc("/api/ban", func(w http.ResponseWriter, r *http.Request) {
+		if !authed(w, r) {
+			return
+		}
+		banHandler(w, r)
+	})
+	mux.HandleFunc("/api/flag", func(w http.ResponseWriter, r *http.Request) {
+		if !authed(w, r) {
+			return
+		}
+		flagHandler(w, r)
+	})
+	// Tout ce qu'on sait du festival Splatoon 3 en cours (voir splatfest.go).
+	mux.HandleFunc("/api/splatfest", func(w http.ResponseWriter, r *http.Request) {
+		if !authed(w, r) {
+			return
+		}
+		splatfestHandler(w, r)
+	})
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) { fmt.Fprintln(w, "ok") })
 	mux.HandleFunc("/worldmap.jpg", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "image/jpeg")
 		w.Header().Set("Cache-Control", "public, max-age=86400")
 		_, _ = w.Write(worldMapJPG)
 	})
+	// Icônes de jeu (embarquées) — chargées par <img> sans token, comme la worldmap.
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if !authed(w, r) {
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-store") // always serve fresh HTML (no stale UI)
-		_, _ = w.Write([]byte(dashboardHTML))
+		_, _ = w.Write([]byte(strings.Replace(dashboardHTML, "/*FEST_UI*/", festUIJS, 1)))
 	})
 
 	fmt.Printf("[nextendo-dashboard] unified monitoring on :%s (mock=%s)\n", port, envOr("NEXTENDO_DASH_MOCK", "0"))

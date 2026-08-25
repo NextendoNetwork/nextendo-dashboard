@@ -12,7 +12,7 @@ const dashboardHTML = `<!DOCTYPE html>
 <style>
   :root{ --bg:#06080f; --bg2:#0c1020; --card:#121830; --card2:#19203c; --line:#26304f; --line2:#33406b;
          --txt:#eef2ff; --muted:#8b97c4; --faint:#586089;
-         --mk8:#ff3b4e; --s2:#2ee06a; --ssbu:#ff913b; --acnh:#4aa8e8; --mc:#5d8c3f; --acc:#6aa6ff;
+         --mk8:#ff3b4e; --s2:#2ee06a; --ssbu:#ff913b; --acnh:#4aa8e8; --mc:#5d8c3f; --lm3:#9b6ef3; --arms:#2ad4e6; --mta:#ff4fa3; --acc:#6aa6ff;
          --red:#ff3b4e; --blue:#3b8cff; --yellow:#ffce3a; --green:#2ee06a; --purple:#b06bff; --orange:#ff913b; --cyan:#2ad4e6; }
   *{ box-sizing:border-box; }
   ::-webkit-scrollbar{ width:10px; height:10px; } ::-webkit-scrollbar-thumb{ background:var(--line2); border-radius:6px; } ::-webkit-scrollbar-track{ background:transparent; }
@@ -67,9 +67,11 @@ const dashboardHTML = `<!DOCTYPE html>
   .gcard .grow{ display:flex; gap:18px; }
   .gcard .gm{ } .gcard .gm .v{ font-size:24px; font-weight:800; font-variant-numeric:tabular-nums; line-height:1; } .gcard .gm .k{ font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.6px; margin-top:4px; }
   /* manual power controls (start/stop an allowlisted game server) */
-  .gcard .pwr{ display:flex; align-items:center; gap:8px; margin-top:12px; padding-top:11px; border-top:1px solid var(--line); cursor:default; }
+  .gcard .pwr{ display:flex; align-items:center; flex-wrap:wrap; row-gap:7px; gap:8px; margin-top:12px; padding-top:11px; border-top:1px solid var(--line); cursor:default; }
   .gcard .pwrlbl{ font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.5px; color:var(--muted); display:flex; align-items:center; gap:5px; margin-right:auto; }
   .gcard .pwrlbl.on{ color:var(--green); } .gcard .pwrlbl.off{ color:var(--red); }
+  /* Portée réduite du bouton (S3 : le bouton ne coupe que le matchmaking, pas l'hôte de session). */
+  .gcard .pwrnote{ flex-basis:100%; margin-left:0 !important; font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.4px; color:var(--muted); opacity:.75; margin-left:6px; cursor:help; }
   .pwbtn{ font-size:11px; font-weight:800; padding:5px 12px; border-radius:9px; border:1px solid var(--line2); background:var(--card2); color:var(--txt); cursor:pointer; transition:.12s; }
   .pwbtn.on:not(:disabled):hover{ border-color:var(--green); color:var(--green); }
   .pwbtn.off:not(:disabled):hover{ border-color:var(--red); color:var(--red); }
@@ -113,7 +115,55 @@ const dashboardHTML = `<!DOCTYPE html>
   .av .cr .ic{ width:11px; height:11px; }
   .ic.crown{ color:var(--yellow); }
   /* player cards */
+  /* Camps de festival : la couleur dit d'un coup d'oeil si les deux equipes ont bien ete
+     separees par camp. Sans elle, un festimatch affiche huit pseudos indiscernables. */
+  /* Les couleurs SONT celles du jeu, relevees sur l'ecran de choix du camp de JUEA-00210 :
+     Perle & Coralie en rouge, Macalamar & DJ Octave en violet, Pasquale & Angie en bleu.
+     Ne pas en inventer d'autres — c'est a ces couleurs que l'encre se reconnait en partie. */
+  .pill.camp-Alpha{ border-color:#e01038; box-shadow:inset 3px 0 0 #e01038; }
+  .pill.camp-Bravo{ border-color:#9b2fd0; box-shadow:inset 3px 0 0 #9b2fd0; }
+  .pill.camp-Charlie{ border-color:#1a45e8; box-shadow:inset 3px 0 0 #1a45e8; }
+  .pill.camp-Alpha b{ color:#ff5470; } .pill.camp-Bravo b{ color:#c46bf0; } .pill.camp-Charlie b{ color:#5c85ff; }
   .players{ display:grid; grid-template-columns:repeat(auto-fill,minmax(330px,1fr)); gap:14px; }
+  /* Expulsion : action destructrice, donc discrète au repos et explicite une fois armée.
+     Deux clics plutôt qu'une boîte de dialogue — un clic malencontreux ne sort personne
+     d'une course, et rien ne bloque le rafraîchissement du tableau. */
+  .kick{ grid-column:1/-1; margin-top:10px; display:flex; align-items:center; gap:8px; }
+  .kick button{ font:inherit; font-size:12px; font-weight:600; cursor:pointer;
+    border:1px solid var(--line); background:transparent; color:var(--muted);
+    padding:5px 10px; border-radius:6px; transition:background .12s,color .12s,border-color .12s; }
+  .kick button:hover{ color:#ff6b6b; border-color:#ff6b6b; }
+  .kick button:focus-visible{ outline:2px solid #ff6b6b; outline-offset:2px; }
+  .kick button.armed{ background:#ff3b4e; border-color:#ff3b4e; color:#fff; }
+  .kick button[disabled]{ opacity:.6; cursor:default; }
+  .kick .msg{ font-size:12px; color:var(--faint); }
+  /* Bannissement : irréversible (compte, sauvegardes et historique effacés). Il ne partage
+     donc PAS la mécanique à deux clics de l'expulsion — il ouvre un formulaire où le motif
+     est obligatoire et la clé d'administration doit être saisie. Le lien du tableau de bord
+     ne suffit jamais à effacer un compte. */
+  .kick .banbtn{ margin-left:auto; }
+  .kick .banbtn:hover{ color:#ff3b4e; border-color:#ff3b4e; }
+  .banbox{ grid-column:1/-1; margin-top:8px; padding:10px; border:1px solid #ff3b4e;
+    border-radius:7px; background:rgba(255,59,78,.07); display:flex; flex-direction:column; gap:7px; }
+  .banbox .warn{ font-size:12px; color:#ff6b6b; font-weight:600; }
+  .banbox .warn b{ font-weight:700; }
+  .banbox input{ font:inherit; font-size:12px; padding:6px 8px; border-radius:5px;
+    border:1px solid var(--line); background:var(--bg); color:var(--fg); width:100%; }
+  .banbox .row{ display:flex; gap:7px; align-items:center; }
+  .banbox .go{ font:inherit; font-size:12px; font-weight:700; cursor:pointer; white-space:nowrap;
+    background:#ff3b4e; border:1px solid #ff3b4e; color:#fff; padding:6px 11px; border-radius:6px; }
+  .banbox .go[disabled]{ opacity:.6; cursor:default; }
+  .banbox .cancel{ font:inherit; font-size:12px; cursor:pointer; background:transparent;
+    border:1px solid var(--line); color:var(--muted); padding:6px 11px; border-radius:6px; }
+  /* Variante compacte dans les pastilles de lobby : c'est là qu'on voit QUI joue
+     AVEC qui, donc là qu'un signalement se traite. Même mécanique à deux clics. */
+  .pill .kickmini{ font:inherit; font-size:11px; font-weight:700; line-height:1; cursor:pointer;
+    border:1px solid transparent; background:transparent; color:var(--faint);
+    padding:2px 5px; border-radius:5px; margin-left:1px; }
+  .pill .kickmini:hover{ color:#ff6b6b; border-color:#ff6b6b; }
+  .pill .kickmini:focus-visible{ outline:2px solid #ff6b6b; outline-offset:1px; }
+  .pill .kickmini.armed{ background:#ff3b4e; border-color:#ff3b4e; color:#fff; }
+  .pill .kickmini[disabled]{ opacity:.5; cursor:default; }
   .pcard{ background:linear-gradient(160deg,var(--card2),var(--card)); border:1px solid var(--line); border-radius:15px; padding:15px; transition:.15s; }
   .pcard:hover{ transform:translateY(-2px); border-color:var(--line2); }
   .pcard .hd{ display:flex; align-items:center; gap:12px; margin-bottom:12px; }
@@ -162,14 +212,14 @@ const dashboardHTML = `<!DOCTYPE html>
 <script>
   var KEY = location.search || '';
   var TAB = 'overview';
-  var GAMECOLORS = { mk8:'#ff3b4e', s2:'#2ee06a', ssbu:'#ff913b', acnh:'#4aa8e8', mc:'#5d8c3f' };
+  var GAMECOLORS = { mk8:'#ff3b4e', s2:'#2ee06a', s3:'#e8ff2a', ssbu:'#ff913b', acnh:'#4aa8e8', mc:'#5d8c3f', lm3:'#9b6ef3', arms:'#2ad4e6', mta:'#ff4fa3' };
   // correct per-game identity (the shared MK8 dashboard mislabels S2/SSBU host/port/NEX)
   var GAMEINFO = {
-    mk8:{ nex:'4.3.3', sni:'the-game-host', port:60003 },
-    s2:{  nex:'4.0.0', sni:'the-game-host', port:60004 },
-    ssbu:{nex:'4.6.3', sni:'the-game-host', port:60005 },
-    acnh:{nex:'4.0.0', sni:'the-game-host', port:60007 },
-    mc:{  nex:'4.3.1', sni:'the-game-host', port:60006 }
+    mk8:{ nex:'4.3.3', sni:'the game server hostname', port:60003 },
+    s2:{  nex:'4.0.0', sni:'the game server hostname', port:60004 },
+    ssbu:{nex:'4.6.3', sni:'the game server hostname', port:60005 },
+    acnh:{nex:'4.0.0', sni:'the game server hostname', port:60007 },
+    mc:{  nex:'4.3.1', sni:'the game server hostname', port:60006 }
   };
   // Real game mode per lobby. S2 encodes it in the MatchmakeSession game_mode (+ maxParticipants
   // and the private-room code): mode 1 = Ranked, mode 0 = Turf War (confirmed in-game), a
@@ -196,6 +246,31 @@ const dashboardHTML = `<!DOCTYPE html>
       if(lo.mode===0)      return {name:'Turf War',   col:'#5fe08c', bg:'rgba(46,224,106,.18)',  icn:'flag'};
       if(lo.mode===2)      return {name:'League',     col:'#c19bff', bg:'rgba(176,107,255,.20)', icn:'swords'};
       return {name:'Mode '+(lo.mode==null?'?':lo.mode), col:'#9cc1ff', bg:'rgba(106,166,255,.16)', icn:'flag'};
+    }
+    if(key==='s3'&&lo){
+      // NPLN n'a pas de game_mode numérique, mais l'apparieur publie une CLE DE MODE stable
+      // (cleDuMode) sur chaque partie qu'il forme : c'est elle qui nomme le mode, pas le type.
+      // Avant, on ne lisait que 'type' — et on le comparait en minuscules alors que le serveur
+      // envoie « Salon » ou « Salmon Run ». La comparaison ne tombait jamais juste : TOUTE partie
+      // sans code s'affichait « Partie », y compris une Salmon Run.
+      var S3={
+        coop:              {name:'Salmon Run',         col:'#ff9e5c', bg:'rgba(255,122,61,.20)',  icn:'fish'},
+        coop_private:      {name:'Salmon Run privée',  col:'#ffb07c', bg:'rgba(255,122,61,.14)',  icn:'fish'},
+        regular:           {name:'Guerre de territoire',col:'#5fe08c',bg:'rgba(46,224,106,.18)',  icn:'flag'},
+        bankara_open:      {name:'Anarchie ouverte',   col:'#ffbf5a', bg:'rgba(255,159,59,.18)',  icn:'target'},
+        bankara_challenge: {name:'Anarchie série',     col:'#ffa93a', bg:'rgba(255,159,59,.24)',  icn:'target'},
+        x:                 {name:'Match X',            col:'#6ee7c8', bg:'rgba(45,212,191,.18)',  icn:'swords'},
+        fest:              {name:'Festival',           col:'#ff8ad4', bg:'rgba(255,105,196,.18)', icn:'swords'},
+        private:           {name:'Match privé',        col:'#c9d2f0', bg:'rgba(139,151,196,.20)', icn:'lock'}
+      };
+      if(lo.mode&&S3[lo.mode]) return S3[lo.mode];
+      if(lo.code) return {name:'Privée', col:'#c9d2f0', bg:'rgba(139,151,196,.20)', icn:'lock'};
+      // Repli sur le type, insensible a la casse cette fois. Un salon d'hote n'a pas encore de
+      // mode : il n'est pas passe par l'apparieur.
+      var t=(lo.type||'').toLowerCase();
+      if(t==='salon') return {name:'Salon', col:'#e8ff2a', bg:'rgba(232,255,42,.16)', icn:'flag'};
+      if(t) return {name:lo.type, col:'#5fe08c', bg:'rgba(46,224,106,.18)', icn:'swords'};
+      return {name:'Partie', col:'#5fe08c', bg:'rgba(46,224,106,.18)', icn:'swords'};
     }
     return {name:'Partie en ligne', col:'#9cc1ff', bg:'rgba(106,166,255,.16)', icn:'flag'};
   }
@@ -270,6 +345,9 @@ const dashboardHTML = `<!DOCTYPE html>
       '<span class="pwrlbl '+(on?'on':'off')+'">'+ic('power')+(on?'Allumé':'Éteint')+'</span>'+
       '<button class="pwbtn on" '+(on?'disabled':'')+' onclick="powerGame(\''+gm.key+'\',\'start\')">Allumer</button>'+
       '<button class="pwbtn off" '+(on?'':'disabled')+' onclick="powerGame(\''+gm.key+'\',\'stop\')">Éteindre</button>'+
+      // Splatoon 3 tourne en deux processus et ce bouton n'en pilote qu'un : le dire, plutôt que
+      // de laisser croire que le jeu est entièrement coupé alors que les salons survivent.
+      (gm.key==='s3' ? '<span class="pwrnote" title="L\'hôte de session (:7575) est un service système, hors de portée de ce bouton : les salons déjà ouverts survivent.">matchmaking seul</span>' : '')+
     '</div>';
   }
   function powerGame(key,action){
@@ -322,7 +400,7 @@ const dashboardHTML = `<!DOCTYPE html>
     // chart + map row
     h+='<div class="grid2">'+
       '<div><h2>'+ic('trend')+'Connexions en temps réel</h2><div class="panel"><div class="chartwrap" id="chart"></div>'+
-      '<div class="legend"><span><i style="background:var(--mk8)"></i>Mario Kart 8</span><span><i style="background:var(--s2)"></i>Splatoon 2</span><span><i style="background:var(--ssbu)"></i>Smash Ultimate</span><span><i style="background:var(--acnh)"></i>Animal Crossing</span><span><i style="background:var(--mc)"></i>Minecraft</span></div></div></div>'+
+      '<div class="legend"><span><i style="background:var(--mk8)"></i>Mario Kart 8</span><span><i style="background:var(--s2)"></i>Splatoon 2</span><span><i style="background:var(--ssbu)"></i>Smash Ultimate</span><span><i style="background:var(--acnh)"></i>Animal Crossing</span><span><i style="background:var(--mc)"></i>Minecraft</span><span><i style="background:var(--lm3)"></i>Luigi&#39;s Mansion 3</span><span><i style="background:var(--arms)"></i>ARMS</span><span><i style="background:var(--mta)"></i>Mario Tennis Aces</span></div></div></div>'+
       '<div><h2>'+ic('globe')+'Joueurs par pays</h2><div class="panel"><div class="mapwrap" id="map"></div><div class="geolist" id="geolist" style="margin-top:12px"></div></div></div>'+
     '</div>';
     // unified feed
@@ -335,7 +413,11 @@ const dashboardHTML = `<!DOCTYPE html>
 
   function drawChart(d){
     var hi=d.history||[]; var el=document.getElementById('chart'); if(!el) return;
-    var W=600,H=200,pad=24; var keys=['mk8','s2','ssbu','acnh','mc'];
+    var W=600,H=200,pad=24;
+    // Derive from the live game list: a game added server-side must show up on the curve
+    // without editing the chart too.
+    var keys=(d.games||[]).map(function(g){return g.key});
+    if(!keys.length) keys=['mk8','s2','s3','ssbu','acnh','mc','lm3','arms','mta'];
     if(hi.length<2){ el.innerHTML='<div class="empty" style="height:100%;display:grid;place-items:center">Collecte des données…</div>'; return; }
     var maxv=1; for(var i=0;i<hi.length;i++){ var t=0; for(var k=0;k<keys.length;k++) t+=(hi[i].conn&&hi[i].conn[keys[k]])||0; if(t>maxv)maxv=t; }
     maxv=Math.ceil(maxv*1.2);
@@ -344,7 +426,10 @@ const dashboardHTML = `<!DOCTYPE html>
     var svg='<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none">';
     for(var gl=0;gl<=4;gl++){ var yy=pad+(H-2*pad)*gl/4; svg+='<line x1="'+pad+'" y1="'+yy+'" x2="'+(W-pad)+'" y2="'+yy+'" stroke="#26304f" stroke-width="1"/>'; svg+='<text x="'+(pad-4)+'" y="'+(yy+3)+'" fill="#586089" font-size="9" text-anchor="end">'+Math.round(maxv*(4-gl)/4)+'</text>'; }
     var cum=[]; for(var i=0;i<hi.length;i++) cum[i]=0;
-    var cols={mk8:'#ff3b4e',s2:'#2ee06a',ssbu:'#ff913b',acnh:'#4aa8e8',mc:'#5d8c3f'};
+    // Les cles de la courbe viennent de d.games : tout jeu absent de cette table
+    // est trace avec fill/stroke = "undefined" et sa courbe disparait. s3 y
+    // manquait depuis son ajout — corrige ici en meme temps qu'arms.
+    var cols={mk8:'#ff3b4e',s2:'#2ee06a',s3:'#e8ff2a',ssbu:'#ff913b',acnh:'#4aa8e8',mc:'#5d8c3f',lm3:'#9b6ef3',arms:'#2ad4e6',mta:'#ff4fa3'};
     for(var k=0;k<keys.length;k++){ var kk=keys[k]; var area='M '+pad+' '+y(0); var top='';
       for(var i=0;i<hi.length;i++){ var v=(hi[i].conn&&hi[i].conn[kk])||0; var below=cum[i]; cum[i]+=v; top+=(i?' L ':'')+x(i).toFixed(1)+' '+y(cum[i]).toFixed(1); }
       // area between prev cum and new cum
@@ -409,21 +494,32 @@ const dashboardHTML = `<!DOCTYPE html>
       '<span style="color:'+gm.color+';font-weight:800">'+esc(gm.label)+'</span>'+
       '<span>'+ic('key')+'Clé <b>'+esc(sv.accessKey)+'</b></span>'+
       '<span>'+ic('net')+'Secure <b>:'+esc(gi.port||sv.securePort)+'</b></span>'+
-      '<span>'+ic('server')+'NEX <b>'+esc(gi.nex||sv.nexVersion)+'</b></span>'+
+      '<span>'+ic('server')+(/^NPLN/i.test(gi.nex||sv.nexVersion||'')?'Pile':'NEX')+' <b>'+esc(gi.nex||sv.nexVersion)+'</b></span>'+
       '<span>'+ic('globe')+'Hôte <b>'+esc(gi.sni||sv.sniHost)+'</b></span>'+
       '<span>'+ic('timer')+'Uptime <b>'+fmtDur(s.uptimeSeconds)+'</b></span></div>';
+    // Splatoon 3 est le seul jeu a tenir des festivals : le bouton n'apparait que la.
+    if(key==='s3') h+=festBouton();
+    // « En recherche » : joueurs dont le matchmaking est ouvert mais dont le match n'est pas encore
+    // forme. Ils ne comptent NI dans « En lobby » NI dans « Lobbies », qui ne recensent que des
+    // sessions de jeu constituees — d'ou un ecran a zero partout alors qu'un joueur cherche
+    // reellement une partie. Le compte se lit dans le champ "mode" publie par le serveur de jeu
+    // (npln-s3 y met « Recherche de partie » des la creation du ticket), donc rien a changer cote
+    // serveur, et les autres jeux en profitent des qu'ils publient un mode equivalent.
+    var enRecherche=0; for(var q=0;q<(s.players||[]).length;q++){ if(/recherche/i.test(s.players[q].mode||'')) enRecherche++; }
+
     h+='<div class="cards">'+
       statCard('blue','users',s.connected,'Connectés')+statCard('green','usercheck',s.inLobby,'En lobby')+
-      statCard('yellow','layers',s.activeLobbies,'Lobbies')+statCard('cyan','activity',fmtN(s.totalRmc),'Appels RMC')+
+      statCard('red','search',enRecherche,'En recherche')+
+      statCard('yellow','layers',s.activeLobbies,'Lobbies')+statCard('cyan','activity',fmtN(s.totalRmc),/^NPLN/i.test(sv.nexVersion||'')?'Appels gRPC':'Appels RMC')+
       statCard('purple','trend',s.peakConnected,'Pic')+statCard('orange','plus',s.gatheringsMade,'Lobbies créés')+'</div>';
     // lobbies
     h+='<h2>'+ic('layers')+'Lobbies <span class="cnt">'+((s.gatherings||[]).length)+'</span></h2>';
     if(!s.gatherings||!s.gatherings.length){ h+='<div class="empty">Aucun lobby actif.</div>'; }
     else{ h+='<div class="lobbies">'; for(var i=0;i<s.gatherings.length;i++){ var lo=s.gatherings[i]; var bcls=lo.count>=2?'match':'wait'; var pct=Math.min(100,Math.round(100*lo.count/(lo.max||8)));
-      h+='<div class="lobby" style="--gc:'+((key==='s2'||key==='mk8')?modeInfo(key,lo).col:gm.color)+'"><div class="top"><span class="gid">'+ic('hash')+'Lobby '+lo.id+' '+modeBadge(key,lo)+'</span><span class="badge '+bcls+'">'+ic(lo.count>=2?'check':'search')+esc(lo.state)+'</span></div>';
+      h+='<div class="lobby" style="--gc:'+((key==='s2'||key==='mk8'||key==='s3')?modeInfo(key,lo).col:gm.color)+'"><div class="top"><span class="gid">'+ic('hash')+'Lobby '+lo.id+' '+modeBadge(key,lo)+'</span><span class="badge '+bcls+'">'+ic(lo.count>=2?'check':'search')+esc(lo.state)+'</span></div>';
       h+='<div class="meta"><span>'+ic('users')+'<b>'+lo.count+'</b>/'+lo.max+'</span>'+(lo.vr&&key==='mk8'?'<span class="ratetag">'+rateName(key)+' '+lo.vr+'</span>':'')+'<span>'+ic('crown','crown')+'<b>'+esc(rn({pid:lo.hostPid,name:lo.hostName}))+'</b></span></div>';
       h+='<div class="occ"><i style="width:'+pct+'%"></i></div><div class="parts">';
-      var pls=lo.players||[]; for(var j=0;j<pls.length;j++){ var p=pls[j]; h+='<span class="pill">'+av(p)+'<b>'+esc(rn(p))+'</b><span class="ppid">'+ic('hash')+p.pid+'</span>'+(p.vr&&key==='mk8'?'<span class="vr">'+p.vr+'</span>':'')+'</span>'; }
+      var pls=lo.players||[]; for(var j=0;j<pls.length;j++){ var p=pls[j]; h+='<span class="pill'+(p.camp?' camp-'+p.camp:'')+'"'+(p.camp?' title="Camp '+esc(p.camp)+'"':'')+'>'+av(p)+'<b>'+esc(rn(p))+'</b><span class="ppid">'+ic('hash')+p.pid+'</span>'+(p.vr&&key==='mk8'?'<span class="vr">'+p.vr+'</span>':'')+'<button type="button" class="kickmini" title="Expulser" data-game="'+key+'" data-pid="'+p.pid+'" onclick="kick(this)">&times;</button></span>'; }
       h+='</div></div>'; } h+='</div>'; }
     // players
     h+='<h2>'+ic('users')+'Joueurs <span class="cnt">'+((s.players||[]).length)+'</span></h2>';
@@ -433,7 +529,10 @@ const dashboardHTML = `<!DOCTYPE html>
       var loc=pl.country?(flag(pl.cc)+' '+esc(pl.country)+(pl.city?(' · '+esc(pl.city)):'')):'<span style="color:var(--faint)">localisation…</span>';
       h+='<div class="pcard"><div class="hd">'+av(pl,'m')+'<div class="who"><div class="nm">'+esc(rn(pl))+(rn(pl).indexOf('Joueur-')===0?' <span class="auto">auto</span>':'')+(pl.isHost?ic('crown','crown'):'')+'</div><div class="sub">'+ic('hash')+'<span class="mono">'+pl.pid+'</span></div></div><span class="st '+scls+'">'+ic(pl.gathering?'usercheck':'user')+esc(pl.state)+'</span></div><div class="kv">';
       var plo=pl.gathering?gmap[pl.gathering]:null;
-      h+='<div><div class="k">'+ic('flag')+'Mode</div><div class="v">'+(plo?modeBadge(key,plo):(key==='mk8'&&pl.mode?esc(pl.mode):'<span style="color:var(--faint)">—</span>'))+'</div></div>';
+      // Hors lobby, un serveur peut quand même qualifier ce que fait le joueur (S3 : "recherche"
+      // pendant que son ticket de matchmaking court). C'était réservé à MK8, donc S3 affichait un
+      // tiret alors que l'info était bien envoyée.
+      h+='<div><div class="k">'+ic('flag')+'Mode</div><div class="v">'+(plo?modeBadge(key,plo):(pl.mode?'<span class="modetag" style="background:rgba(106,166,255,.16);color:#9cc1ff">'+ic(/recherche/i.test(pl.mode)?'search':'flag')+esc(pl.mode)+'</span>':'<span style="color:var(--faint)">—</span>'))+'</div></div>';
       if(key==='mk8'){ h+='<div><div class="k">'+ic('gauge')+rateName(key)+'</div><div class="v">'+(pl.vr?'<span class="ratetag">'+pl.vr+'</span>':'—')+'</div></div>'; }
       else{ h+='<div><div class="k">'+ic('net')+'NAT</div><div class="v">'+(pl.natType?esc(pl.natType):'—')+'</div></div>'+
             '<div><div class="k">'+ic('gauge')+'Ping</div><div class="v">'+(pl.ping?pl.ping+' ms':'—')+'</div></div>'; }
@@ -443,6 +542,7 @@ const dashboardHTML = `<!DOCTYPE html>
       h+='<div><div class="k">'+ic('timer')+'En ligne</div><div class="v">'+fmtDur(pl.onlineSeconds)+'</div></div>';
       h+='<div><div class="k">'+ic('clock')+'Inactif</div><div class="v">'+fmtDur(pl.idleSeconds)+'</div></div>';
       h+='<div class="full"><div class="k">'+ic('activity')+'Dernière action · '+pl.calls+' appels</div><div class="v" style="font-size:12px;color:var(--muted)">'+esc(pl.lastAction||'—')+'</div></div>';
+      h+='<div class="kick full"><button type="button" data-game="'+key+'" data-pid="'+pl.pid+'" onclick="kick(this)">Expulser</button><span class="msg"></span><button type="button" class="banbtn" data-pid="'+pl.pid+'" data-name="'+esc(rn(pl))+'" onclick="banOpen(this)">Bannir…</button></div>';
       h+='</div></div>'; } h+='</div>'; }
     // feed + methods
     h+='<div class="grid2"><div><h2>'+ic('activity')+'Activité en direct</h2><div class="panel feed" id="gfeed"></div></div>'+
@@ -464,8 +564,118 @@ const dashboardHTML = `<!DOCTYPE html>
     if(TAB==='overview') renderOverview(d); else renderGame(d,TAB);
   }
   document.getElementById('foot').innerHTML=ic('globe')+' Agrégation live des 4 serveurs NEX privés (VPS), rafraîchie toutes les 2 s · géoloc ip-api.com · drapeaux flagcdn.com · rendu Mii Studio Nintendo.';
-  function tick(){ fetch('/api/stats'+KEY,{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){ setStatus(true); draw(d); }).catch(function(e){ setStatus(false); }); }
-  tick(); setInterval(tick,2000);
+  // kick : premier clic arme, second confirme. Le PID est la SEULE clé envoyée — le nom
+  // affiché vient du client et peut être celui de quelqu'un d'autre.
+  function kick(btn){
+    // Le bouton existe sous deux formes : pleine largeur sur la fiche joueur (avec une
+    // zone de message) et compacte dans les pastilles de lobby (sans). On mémorise le
+    // libellé d'origine plutôt que de le supposer.
+    var msg=btn.parentNode.querySelector('.msg');
+    var setMsg=function(t,c){ if(msg){ msg.textContent=t; msg.style.color=c; } };
+    if(!btn.dataset.label){ btn.dataset.label=btn.innerHTML; }
+    if(btn.dataset.armed!=='1'){
+      btn.dataset.armed='1'; btn.classList.add('armed');
+      btn.innerHTML=btn.classList.contains('kickmini')?'?':'Confirmer ?';
+      btn.dataset.timer=setTimeout(function(){
+        btn.dataset.armed='0'; btn.classList.remove('armed'); btn.innerHTML=btn.dataset.label;
+      },4000);
+      return;
+    }
+    clearTimeout(btn.dataset.timer);
+    btn.dataset.armed='0'; btn.classList.remove('armed');
+    btn.disabled=true; btn.innerHTML='…'; setMsg('','');
+    var url='/api/kick'+KEY+(KEY?'&':'?')+'game='+encodeURIComponent(btn.dataset.game)+'&pid='+encodeURIComponent(btn.dataset.pid);
+    fetch(url,{method:'POST',cache:'no-store'})
+      .then(function(r){ return r.text().then(function(t){ var j; try{ j=JSON.parse(t); }catch(e){ j={error:t}; } return {ok:r.ok,j:j}; }); })
+      .then(function(res){
+        btn.innerHTML=btn.dataset.label; btn.disabled=false;
+        if(!res.ok){ setMsg((res.j&&res.j.error)||'échec','#ff6b6b'); return; }
+        // kicked=false : le serveur a répondu, mais ce PID n'avait plus de connexion vivante —
+        // le joueur était déjà parti. Le dire, plutôt que laisser croire à une expulsion.
+        // kicked vaut 0 ou false quand ce PID n'avait plus de connexion vivante.
+        var n=res.j&&res.j.kicked;
+        if(n===false||n===0){ setMsg('déjà déconnecté','var(--faint)'); }
+        else{ setMsg('expulsé','#2ee06a'); }
+      })
+      .catch(function(){ btn.innerHTML=btn.dataset.label; btn.disabled=false; setMsg('erreur réseau','#ff6b6b'); });
+  }
+
+  // banOpen ouvre le formulaire. Pas de mécanique à deux clics ici : un bannissement efface
+  // le compte, les sauvegardes et l'historique, et rien ne les ramène. On demande donc un
+  // motif ET la clé d'administration, que ce service ne stocke jamais.
+  function banOpen(btn){
+    var card=btn.closest('.pcard');
+    if(card.querySelector('.banbox')) return;
+    var pid=btn.dataset.pid, nom=btn.dataset.name||('PID '+pid);
+    var box=document.createElement('div');
+    box.className='banbox';
+    box.innerHTML='<div class="warn">Bannir <b>'+esc(nom)+'</b> (PID '+esc(pid)+') ?<br>'+
+      'Le compte, les sauvegardes et l historique sont EFFACÉS. Irréversible.</div>'+
+      '<input class="motif" type="text" placeholder="Motif (obligatoire, conservé avec le bannissement)" maxlength="200">'+
+      '<input class="admk" type="password" placeholder="Clé d administration" autocomplete="off">'+
+      '<div class="row"><button type="button" class="go">Bannir définitivement</button>'+
+      '<button type="button" class="cancel">Annuler</button>'+
+      '<span class="msg" style="font-size:12px"></span></div>';
+    card.appendChild(box);
+    // La clé est retenue le temps de l onglet seulement : re-saisir à chaque bannissement
+    // pousserait à la coller quelque part de plus durable, et donc de moins sûr.
+    var memo=sessionStorage.getItem('nx_admin_key');
+    if(memo) box.querySelector('.admk').value=memo;
+    box.querySelector('.motif').focus();
+    box.querySelector('.cancel').onclick=function(){ box.remove(); };
+    box.querySelector('.go').onclick=function(){ banDo(box,pid); };
+  }
+
+  function banDo(box,pid){
+    var motif=box.querySelector('.motif').value.trim();
+    var key=box.querySelector('.admk').value.trim();
+    var msg=box.querySelector('.msg'), go=box.querySelector('.go');
+    if(!motif){ msg.textContent='motif requis'; msg.style.color='#ff6b6b'; return; }
+    if(!key){ msg.textContent='clé requise'; msg.style.color='#ff6b6b'; return; }
+    go.disabled=true; go.textContent='…'; msg.textContent='';
+    var url='/api/ban'+KEY+(KEY?'&':'?')+'pid='+encodeURIComponent(pid)+'&reason='+encodeURIComponent(motif);
+    fetch(url,{method:'POST',cache:'no-store',headers:{'X-Admin-Key':key}})
+      .then(function(r){ return r.text().then(function(t){ var j; try{ j=JSON.parse(t); }catch(e){ j={error:t}; } return {ok:r.ok,j:j}; }); })
+      .then(function(res){
+        if(!res.ok){
+          go.disabled=false; go.textContent='Bannir définitivement';
+          msg.textContent=(res.j&&res.j.error)||'échec'; msg.style.color='#ff6b6b';
+          return;
+        }
+        sessionStorage.setItem('nx_admin_key',key);
+        box.innerHTML='<div class="warn">Banni. Le joueur a été déconnecté de tous les serveurs.</div>';
+      })
+      .catch(function(){ go.disabled=false; go.textContent='Bannir définitivement';
+        msg.textContent='erreur réseau'; msg.style.color='#ff6b6b'; });
+  }
+
+
+  // Sondage tolérant. Avant : un setInterval de 2 s, et le MOINDRE échec passait
+  // le bandeau en « injoignable ». Trois défauts se cumulaient — aucune tolérance
+  // à un raté passager, aucun délai maximal, et setInterval qui relance sans
+  // attendre la requête précédente, si bien qu'un réseau lent empilait les
+  // appels au lieu de ralentir. Le serveur, lui, répond en 45 ms.
+  var ECHECS=0, TOLERANCE=3, DELAI_MAX=8000;
+  function tick(){
+    var stop = ('AbortController' in window) ? new AbortController() : null;
+    var minuteur = stop ? setTimeout(function(){ stop.abort(); }, DELAI_MAX) : null;
+    fetch('/api/stats'+KEY, {cache:'no-store', signal: stop ? stop.signal : undefined})
+      .then(function(r){ if(!r.ok) throw new Error('http '+r.status); return r.json(); })
+      .then(function(d){ ECHECS=0; setStatus(true); draw(d); })
+      .catch(function(e){
+        // On ne bascule qu'après plusieurs échecs d'affilée : un raté isolé sur
+        // trente requêtes par minute est normal et ne veut rien dire.
+        if(++ECHECS >= TOLERANCE) setStatus(false);
+      })
+      .then(function(){
+        if(minuteur) clearTimeout(minuteur);
+        // Chaînage plutôt qu'intervalle : la requête suivante ne part qu'une fois
+        // la précédente terminée, donc elles ne peuvent plus se chevaucher.
+        setTimeout(tick, 2000);
+      });
+  }
+  /*FEST_UI*/
+  tick();
 </script>
 </body>
 </html>`
