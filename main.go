@@ -87,6 +87,11 @@ func sources() []gameSrc {
 		// Super Mario Bros. Wonder (NPLN)
 		{Key: "wonder", Label: "Super Mario Bros. Wonder", Color: "#ff6f00",
 			URL: envOr("DASH_WONDER_URL", "http://localhost:8100"), Token: envOr("DASH_WONDER_TOKEN", tok)},
+		// Diablo III speaks Demonware, not NEX. Its server renders the same shape of
+		// /api/stats: remote tasks counted as RMC, public bdMatchMaking games as
+		// gatherings. Dashboard on :8093.
+		{Key: "d3", Label: "Diablo III", Color: "#c0392b",
+			URL: envOr("DASH_D3_URL", "http://localhost:8093"), Token: envOr("DASH_D3_TOKEN", tok)},
 	}
 }
 
