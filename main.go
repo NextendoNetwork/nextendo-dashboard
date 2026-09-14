@@ -81,6 +81,12 @@ func sources() []gameSrc {
 		// ecoute sur 8092 — surtout pas 8084, qui est celui de SSBU chez nous.
 		{Key: "mta", Label: "Mario Tennis Aces", Color: "#ff4fa3",
 			URL: envOr("DASH_MTA_URL", "http://localhost:8092"), Token: envOr("DASH_MTA_TOKEN", tok)},
+		// Monster Hunter Generations Ultimate
+		{Key: "mhgu", Label: "Monster Hunter GU", Color: "#e63946",
+			URL: envOr("DASH_MHGU_URL", "http://localhost:8101"), Token: envOr("DASH_MHGU_TOKEN", tok)},
+		// Super Mario Bros. Wonder (NPLN)
+		{Key: "wonder", Label: "Super Mario Bros. Wonder", Color: "#ff6f00",
+			URL: envOr("DASH_WONDER_URL", "http://localhost:8100"), Token: envOr("DASH_WONDER_TOKEN", tok)},
 	}
 }
 

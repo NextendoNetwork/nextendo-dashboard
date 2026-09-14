@@ -12,7 +12,7 @@ const dashboardHTML = `<!DOCTYPE html>
 <style>
   :root{ --bg:#06080f; --bg2:#0c1020; --card:#121830; --card2:#19203c; --line:#26304f; --line2:#33406b;
          --txt:#eef2ff; --muted:#8b97c4; --faint:#586089;
-         --mk8:#ff3b4e; --s2:#2ee06a; --ssbu:#ff913b; --acnh:#4aa8e8; --mc:#5d8c3f; --lm3:#9b6ef3; --arms:#2ad4e6; --mta:#ff4fa3; --acc:#6aa6ff;
+         --mk8:#ff3b4e; --s2:#2ee06a; --ssbu:#ff913b; --acnh:#4aa8e8; --mc:#5d8c3f; --lm3:#9b6ef3; --arms:#2ad4e6; --mta:#ff4fa3; --mhgu:#e63946; --wonder:#ff6f00; --acc:#6aa6ff;
          --red:#ff3b4e; --blue:#3b8cff; --yellow:#ffce3a; --green:#2ee06a; --purple:#b06bff; --orange:#ff913b; --cyan:#2ad4e6; }
   *{ box-sizing:border-box; }
   ::-webkit-scrollbar{ width:10px; height:10px; } ::-webkit-scrollbar-thumb{ background:var(--line2); border-radius:6px; } ::-webkit-scrollbar-track{ background:transparent; }
@@ -212,14 +212,16 @@ const dashboardHTML = `<!DOCTYPE html>
 <script>
   var KEY = location.search || '';
   var TAB = 'overview';
-  var GAMECOLORS = { mk8:'#ff3b4e', s2:'#2ee06a', s3:'#e8ff2a', ssbu:'#ff913b', acnh:'#4aa8e8', mc:'#5d8c3f', lm3:'#9b6ef3', arms:'#2ad4e6', mta:'#ff4fa3' };
+  var GAMECOLORS = { mk8:'#ff3b4e', s2:'#2ee06a', s3:'#e8ff2a', ssbu:'#ff913b', acnh:'#4aa8e8', mc:'#5d8c3f', lm3:'#9b6ef3', arms:'#2ad4e6', mta:'#ff4fa3', mhgu:'#e63946', wonder:'#ff6f00' };
   // correct per-game identity (the shared MK8 dashboard mislabels S2/SSBU host/port/NEX)
   var GAMEINFO = {
     mk8:{ nex:'4.3.3', sni:'the game server hostname', port:60003 },
     s2:{  nex:'4.0.0', sni:'the game server hostname', port:60004 },
     ssbu:{nex:'4.6.3', sni:'the game server hostname', port:60005 },
     acnh:{nex:'4.0.0', sni:'the game server hostname', port:60007 },
-    mc:{  nex:'4.3.1', sni:'the game server hostname', port:60006 }
+    mc:{  nex:'4.3.1', sni:'the game server hostname', port:60006 },
+    mhgu:{nex:'4.0.0', sni:'the game server hostname', port:60016 },
+    wonder:{nex:'NPLN', sni:'the game server hostname', port:8443 }
   };
   // Real game mode per lobby. S2 encodes it in the MatchmakeSession game_mode (+ maxParticipants
   // and the private-room code): mode 1 = Ranked, mode 0 = Turf War (confirmed in-game), a
@@ -400,7 +402,7 @@ const dashboardHTML = `<!DOCTYPE html>
     // chart + map row
     h+='<div class="grid2">'+
       '<div><h2>'+ic('trend')+'Connexions en temps réel</h2><div class="panel"><div class="chartwrap" id="chart"></div>'+
-      '<div class="legend"><span><i style="background:var(--mk8)"></i>Mario Kart 8</span><span><i style="background:var(--s2)"></i>Splatoon 2</span><span><i style="background:var(--ssbu)"></i>Smash Ultimate</span><span><i style="background:var(--acnh)"></i>Animal Crossing</span><span><i style="background:var(--mc)"></i>Minecraft</span><span><i style="background:var(--lm3)"></i>Luigi&#39;s Mansion 3</span><span><i style="background:var(--arms)"></i>ARMS</span><span><i style="background:var(--mta)"></i>Mario Tennis Aces</span></div></div></div>'+
+      '<div class="legend"><span><i style="background:var(--mk8)"></i>Mario Kart 8</span><span><i style="background:var(--s2)"></i>Splatoon 2</span><span><i style="background:var(--ssbu)"></i>Smash Ultimate</span><span><i style="background:var(--acnh)"></i>Animal Crossing</span><span><i style="background:var(--mc)"></i>Minecraft</span><span><i style="background:var(--lm3)"></i>Luigi&#39;s Mansion 3</span><span><i style="background:var(--arms)"></i>ARMS</span><span><i style="background:var(--mta)"></i>Mario Tennis Aces</span><span><i style="background:var(--mhgu)"></i>Monster Hunter GU</span><span><i style="background:var(--wonder)"></i>Mario Wonder</span></div></div></div>'+
       '<div><h2>'+ic('globe')+'Joueurs par pays</h2><div class="panel"><div class="mapwrap" id="map"></div><div class="geolist" id="geolist" style="margin-top:12px"></div></div></div>'+
     '</div>';
     // unified feed
@@ -417,7 +419,7 @@ const dashboardHTML = `<!DOCTYPE html>
     // Derive from the live game list: a game added server-side must show up on the curve
     // without editing the chart too.
     var keys=(d.games||[]).map(function(g){return g.key});
-    if(!keys.length) keys=['mk8','s2','s3','ssbu','acnh','mc','lm3','arms','mta'];
+    if(!keys.length) keys=['mk8','s2','s3','ssbu','acnh','mc','lm3','arms','mta','mhgu','wonder'];
     if(hi.length<2){ el.innerHTML='<div class="empty" style="height:100%;display:grid;place-items:center">Collecte des données…</div>'; return; }
     var maxv=1; for(var i=0;i<hi.length;i++){ var t=0; for(var k=0;k<keys.length;k++) t+=(hi[i].conn&&hi[i].conn[keys[k]])||0; if(t>maxv)maxv=t; }
     maxv=Math.ceil(maxv*1.2);
@@ -429,7 +431,7 @@ const dashboardHTML = `<!DOCTYPE html>
     // Les cles de la courbe viennent de d.games : tout jeu absent de cette table
     // est trace avec fill/stroke = "undefined" et sa courbe disparait. s3 y
     // manquait depuis son ajout — corrige ici en meme temps qu'arms.
-    var cols={mk8:'#ff3b4e',s2:'#2ee06a',s3:'#e8ff2a',ssbu:'#ff913b',acnh:'#4aa8e8',mc:'#5d8c3f',lm3:'#9b6ef3',arms:'#2ad4e6',mta:'#ff4fa3'};
+    var cols={mk8:'#ff3b4e',s2:'#2ee06a',s3:'#e8ff2a',ssbu:'#ff913b',acnh:'#4aa8e8',mc:'#5d8c3f',lm3:'#9b6ef3',arms:'#2ad4e6',mta:'#ff4fa3',mhgu:'#e63946',wonder:'#ff6f00'};
     for(var k=0;k<keys.length;k++){ var kk=keys[k]; var area='M '+pad+' '+y(0); var top='';
       for(var i=0;i<hi.length;i++){ var v=(hi[i].conn&&hi[i].conn[kk])||0; var below=cum[i]; cum[i]+=v; top+=(i?' L ':'')+x(i).toFixed(1)+' '+y(cum[i]).toFixed(1); }
       // area between prev cum and new cum
@@ -496,7 +498,7 @@ const dashboardHTML = `<!DOCTYPE html>
       '<span>'+ic('net')+'Secure <b>:'+esc(gi.port||sv.securePort)+'</b></span>'+
       '<span>'+ic('server')+(/^NPLN/i.test(gi.nex||sv.nexVersion||'')?'Pile':'NEX')+' <b>'+esc(gi.nex||sv.nexVersion)+'</b></span>'+
       '<span>'+ic('globe')+'Hôte <b>'+esc(gi.sni||sv.sniHost)+'</b></span>'+
-      '<span>'+ic('timer')+'Uptime <b>'+fmtDur(s.uptimeSeconds)+'</b></span></div>';
+      '<span>'+ic('timer')+'Uptime <b>'+(s.uptimeSeconds!=null?fmtDur(s.uptimeSeconds):'—')+'</b></span></div>';
     // Splatoon 3 est le seul jeu a tenir des festivals : le bouton n'apparait que la.
     if(key==='s3') h+=festBouton();
     // « En recherche » : joueurs dont le matchmaking est ouvert mais dont le match n'est pas encore
@@ -507,11 +509,18 @@ const dashboardHTML = `<!DOCTYPE html>
     // serveur, et les autres jeux en profitent des qu'ils publient un mode equivalent.
     var enRecherche=0; for(var q=0;q<(s.players||[]).length;q++){ if(/recherche/i.test(s.players[q].mode||'')) enRecherche++; }
 
+    var connVal = s.connected != null ? s.connected : (s.players || []).length;
+    var inLobbyVal = s.inLobby != null ? s.inLobby : 0;
+    var lobbiesVal = s.activeLobbies != null ? s.activeLobbies : (s.gatherings || []).length;
+    var rmcVal = s.totalRmc != null ? fmtN(s.totalRmc) : '—';
+    var peakVal = s.peakConnected != null ? s.peakConnected : '—';
+    var gathMadeVal = s.gatheringsMade != null ? s.gatheringsMade : '—';
+    var isNPLN = /^NPLN/i.test(gi.nex || sv.nexVersion || '');
     h+='<div class="cards">'+
-      statCard('blue','users',s.connected,'Connectés')+statCard('green','usercheck',s.inLobby,'En lobby')+
+      statCard('blue','users',connVal,'Connectés')+statCard('green','usercheck',inLobbyVal,'En lobby')+
       statCard('red','search',enRecherche,'En recherche')+
-      statCard('yellow','layers',s.activeLobbies,'Lobbies')+statCard('cyan','activity',fmtN(s.totalRmc),/^NPLN/i.test(sv.nexVersion||'')?'Appels gRPC':'Appels RMC')+
-      statCard('purple','trend',s.peakConnected,'Pic')+statCard('orange','plus',s.gatheringsMade,'Lobbies créés')+'</div>';
+      statCard('yellow','layers',lobbiesVal,'Lobbies')+statCard('cyan','activity',rmcVal,isNPLN?'Appels gRPC':'Appels RMC')+
+      statCard('purple','trend',peakVal,'Pic')+statCard('orange','plus',gathMadeVal,isNPLN?'Sessions':'Lobbies créés')+'</div>';
     // lobbies
     h+='<h2>'+ic('layers')+'Lobbies <span class="cnt">'+((s.gatherings||[]).length)+'</span></h2>';
     if(!s.gatherings||!s.gatherings.length){ h+='<div class="empty">Aucun lobby actif.</div>'; }
