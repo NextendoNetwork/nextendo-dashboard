@@ -92,6 +92,9 @@ func sources() []gameSrc {
 		// gatherings. Dashboard on :8093.
 		{Key: "d3", Label: "Diablo III", Color: "#c0392b",
 			URL: envOr("DASH_D3_URL", "http://localhost:8093"), Token: envOr("DASH_D3_TOKEN", tok)},
+		// Mario Party Superstars
+		{Key: "mps", Label: "Mario Party Superstars", Color: "#b02fd4",
+			URL: envOr("DASH_MPS_URL", "http://localhost:8103"), Token: envOr("DASH_MPS_TOKEN", tok)},
 	}
 }
 
